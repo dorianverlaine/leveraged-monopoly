@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leveraged-monopoly"
+version = "0.1.0"
+description = "Deterministic economic engine for Leveraged Monopoly -- a multiplayer board game with leverage, margin calls, systemic shocks, securitization, and inflation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Leveraged Monopoly contributors" }]
+keywords = ["game", "simulation", "economics", "deterministic-engine", "monopoly"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Games/Entertainment :: Board Games",
+]
+# The engine is pure standard-library Python by design (portable, dependency-free
+# kernel). Optional tooling lives in the extras below.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+# Play a headless demo game from the terminal: `monopoly-demo`.
+monopoly-demo = "monopoly.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
