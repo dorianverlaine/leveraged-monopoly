@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..engine.actions import Action, buy, end_turn, repay_debt, securitize
+from ..engine.actions import Action, build, buy, end_turn, repay_debt, securitize
 from ..engine.board import Tile
 from ..engine.state import GameState
 from . import policy
@@ -42,6 +42,11 @@ class CashflowPolicy(Policy):
             cost = policy.buy_cost_here(state, player_id)
             if player.cash - cost >= _LOW_CASH:
                 return buy(player_id, player.position)
+
+        # Develop a monopoly to multiply rent (this policy lives on rent yield).
+        tile = policy.buildable_tile(state, player_id, cash_buffer=_LOW_CASH)
+        if tile is not None:
+            return build(player_id, tile.index)
 
         # Short on cash -> IPO a slice of a holding rather than borrow.
         if player.cash < _LOW_CASH:

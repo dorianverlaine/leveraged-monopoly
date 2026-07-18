@@ -52,9 +52,13 @@ def available_action_types(state: GameState, seat: int) -> List[str]:
         options.append(ActionType.REPAY_DEBT)
 
     # Property-specific tools: scan holdings once.
-    owns_soleable = False
+    from ..engine.board import MAX_BUILDINGS
+
+    owns_soleable = False       # sole-owned, undeveloped, unmortgaged -> mortgageable
     owns_mortgaged = False
-    owns_securitizable = False
+    owns_securitizable = False  # owns a share, undeveloped, unmortgaged
+    can_build = False
+    can_sell_building = False
     for t in state.board:
         if not t.is_property():
             continue
@@ -63,10 +67,22 @@ def available_action_types(state: GameState, seat: int) -> List[str]:
             continue
         if t.mortgaged:
             owns_mortgaged = True
+            continue
+        if t.buildings > 0:
+            # Developed tiles can't be mortgaged/securitized, only built up or sold.
+            can_sell_building = True
         else:
             owns_securitizable = True
             if t.sole_owner() == seat:
                 owns_soleable = True
+        is_sole = t.sole_owner() == seat
+        if (
+            is_sole
+            and t.buildings < MAX_BUILDINGS
+            and valuation.has_monopoly(state, seat, t.group)
+            and player.cash >= t.building_cost()
+        ):
+            can_build = True
 
     if owns_soleable:
         options.append(ActionType.MORTGAGE)
@@ -74,5 +90,9 @@ def available_action_types(state: GameState, seat: int) -> List[str]:
         options.append(ActionType.UNMORTGAGE)
     if owns_securitizable:
         options.append(ActionType.SECURITIZE)
+    if can_build:
+        options.append(ActionType.BUILD)
+    if can_sell_building:
+        options.append(ActionType.SELL_BUILDING)
 
     return options

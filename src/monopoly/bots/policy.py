@@ -74,6 +74,33 @@ def player_at(state: GameState, player_id: int):
     return state.player_by_id(player_id)
 
 
+def buildable_tile(state: GameState, player_id: int, cash_buffer: int = 0):
+    """Return a landmark the player can develop right now, or ``None``.
+
+    A tile qualifies when the player sole-owns the whole city (a monopoly), the
+    tile is unmortgaged and not yet a skyscraper, and the player keeps at least
+    ``cash_buffer`` after paying the build cost. Cheapest tile first, to spread
+    development the way a sensible player would.
+    """
+    from ..engine.board import MAX_BUILDINGS
+
+    player = state.player_by_id(player_id)
+    candidates = []
+    for tile in state.board:
+        if not tile.is_property() or tile.mortgaged or tile.buildings >= MAX_BUILDINGS:
+            continue
+        if tile.sole_owner() != player_id:
+            continue
+        if not valuation.has_monopoly(state, player_id, tile.group):
+            continue
+        if player.cash - tile.building_cost() < cash_buffer:
+            continue
+        candidates.append(tile)
+    if not candidates:
+        return None
+    return min(candidates, key=lambda t: (t.buildings, t.price))
+
+
 def margin_headroom(state: GameState, player_id: int) -> float:
     """How far the player's margin ratio sits above the maintenance floor.
 

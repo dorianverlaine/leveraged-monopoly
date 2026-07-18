@@ -110,6 +110,11 @@ def mortgage(state: GameState, player_id: int, tile_index: int) -> Optional[Rule
             RuleErrorCode.NOT_TILE_OWNER,
             "Only a sole owner can mortgage a property (securitized shares block it)",
         )
+    if tile.buildings > 0:
+        return RuleError(
+            RuleErrorCode.INVALID_TARGET,
+            "Sell this property's buildings before mortgaging it",
+        )
 
     principal = int(round(valuation.property_value(state, tile_index) * MORTGAGE_LTV))
     if principal <= 0:

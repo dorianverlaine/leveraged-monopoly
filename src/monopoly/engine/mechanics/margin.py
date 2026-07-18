@@ -113,6 +113,10 @@ def _liquidate_tile(state: GameState, player: Player, tile: Tile) -> None:
         tile.mortgaged = False
         tile.mortgage_principal = 0
 
+    # Any buildings are sold with the tile (their value is already in ``proceeds``
+    # via property_value); the fire sale demolishes them.
+    tile.buildings = 0
+
     # Remove the player's stake; the share reverts to "the market" (unowned).
     tile.shares.pop(player.id, None)
 
@@ -143,6 +147,7 @@ def bankrupt_player(state: GameState, player: Player) -> None:
             if tile.sole_owner() is None and tile.total_owned() <= 1e-9:
                 tile.mortgaged = False
                 tile.mortgage_principal = 0
+                tile.buildings = 0
 
     forfeited_debt = player.debt
     player.debt = 0

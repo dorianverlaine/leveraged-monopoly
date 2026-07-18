@@ -26,6 +26,8 @@ class ActionType:
     LEVERAGE = "leverage"        # borrow cash against collateral
     REPAY_DEBT = "repay_debt"
     SECURITIZE = "securitize"    # IPO a slice of a property for cash
+    BUILD = "build"              # add a building level to a monopoly landmark
+    SELL_BUILDING = "sell_building"  # remove a building level for a partial refund
     END_TURN = "end_turn"
     CONCEDE = "concede"
 
@@ -102,6 +104,14 @@ def repay_debt(player_id: int, amount: int) -> Action:
 
 def securitize(player_id: int, tile_index: int, percent: float) -> Action:
     return Action(ActionType.SECURITIZE, player_id, tile_index=tile_index, percent=percent)
+
+
+def build(player_id: int, tile_index: int) -> Action:
+    return Action(ActionType.BUILD, player_id, tile_index=tile_index)
+
+
+def sell_building(player_id: int, tile_index: int) -> Action:
+    return Action(ActionType.SELL_BUILDING, player_id, tile_index=tile_index)
 
 
 def end_turn(player_id: int) -> Action:

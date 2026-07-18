@@ -27,6 +27,7 @@ from .player import PlayerStatus
 from .state import GameState, GamePhase, VictoryCondition
 from . import valuation
 from .mechanics import (
+    building,
     inflation,
     leverage,
     margin,
@@ -69,6 +70,8 @@ def _dispatch(state: GameState, action: Action) -> Union[None, RuleError]:
         ActionType.LEVERAGE: _handle_leverage,
         ActionType.REPAY_DEBT: _handle_repay,
         ActionType.SECURITIZE: _handle_securitize,
+        ActionType.BUILD: _handle_build,
+        ActionType.SELL_BUILDING: _handle_sell_building,
         ActionType.END_TURN: _handle_end_turn,
         ActionType.CONCEDE: _handle_concede,
     }
@@ -189,6 +192,28 @@ def _handle_securitize(state: GameState, action: Action) -> Union[None, RuleErro
     result = securitization.securitize(
         state, action.player_id, action.tile_index, action.percent
     )
+    if result is not None:
+        return result
+    margin.enforce_solvency(state)
+    return None
+
+
+def _handle_build(state: GameState, action: Action) -> Union[None, RuleError]:
+    err = _guard_management(state, action)
+    if err is not None:
+        return err
+    result = building.build(state, action.player_id, action.tile_index)
+    if result is not None:
+        return result
+    margin.enforce_solvency(state)
+    return None
+
+
+def _handle_sell_building(state: GameState, action: Action) -> Union[None, RuleError]:
+    err = _guard_management(state, action)
+    if err is not None:
+        return err
+    result = building.sell_building(state, action.player_id, action.tile_index)
     if result is not None:
         return result
     margin.enforce_solvency(state)

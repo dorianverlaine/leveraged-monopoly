@@ -37,6 +37,11 @@ def securitize(
             RuleErrorCode.TILE_ALREADY_MORTGAGED,
             "Cannot securitize a mortgaged property; redeem it first",
         )
+    if tile.buildings > 0:
+        return RuleError(
+            RuleErrorCode.INVALID_TARGET,
+            "Sell this property's buildings before securitizing it",
+        )
 
     player = state.player_by_id(player_id)
     if player is None:

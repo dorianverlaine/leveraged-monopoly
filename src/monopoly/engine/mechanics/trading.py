@@ -62,13 +62,23 @@ def _charge_rent(state: GameState, tile_index: int) -> None:
     pays rent to themselves, and the securitized-away 'market' portion earns no
     rent -- that lost income is the price of having IPO'd it). Mortgaged
     properties charge nothing.
+
+    A sole owner who holds the whole city (monopoly) charges a multiplied rent:
+    2x undeveloped, escalating with each building up to the skyscraper.
     """
+    from ..board import RENT_MULTIPLIERS
+
     tile = state.board[tile_index]
     if tile.mortgaged or tile.is_unowned():
         return
 
     payer = state.active_player()
     full_rent = tile.base_rent * state.market.price_index
+
+    # Monopoly + development multiplier (only a sole owner of the full city).
+    sole = tile.sole_owner()
+    if sole is not None and valuation.has_monopoly(state, sole, tile.group):
+        full_rent *= RENT_MULTIPLIERS[min(tile.buildings, len(RENT_MULTIPLIERS) - 1)]
 
     # Only the share held by players *other than the payer* generates rent owed.
     payable_share = tile.total_owned() - tile.owned_share(payer.id)

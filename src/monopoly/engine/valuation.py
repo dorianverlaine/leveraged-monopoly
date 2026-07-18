@@ -18,14 +18,32 @@ if TYPE_CHECKING:  # avoid a runtime circular import with state.py
 def property_value(state: "GameState", tile_index: int) -> float:
     """Market value of a whole property tile at the current price index.
 
-    A mortgaged property is still worth its underlying value as collateral is
-    handled separately; here we report the clean market value used for net worth
-    and securitization pricing.
+    Includes the cash invested in any buildings on the tile, so a developed
+    landmark is worth more (this feeds net worth, collateral, securitization
+    pricing, and liquidation proceeds). A mortgaged property still reports its
+    clean market value here; collateral is handled separately.
     """
+    from .board import building_cost
+
     tile = state.board[tile_index]
     if not tile.is_property():
         return 0.0
-    return tile.price * state.market.price_index
+    base = tile.price + tile.buildings * building_cost(tile.price)
+    return base * state.market.price_index
+
+
+def has_monopoly(state: "GameState", player_id: int, group: str) -> bool:
+    """True if ``player_id`` is the sole owner of every landmark in ``group``.
+
+    This is what grants the rent-doubling bonus and unlocks development.
+    Securitizing away any share of any landmark in the city breaks it.
+    """
+    if not group:
+        return False
+    tiles = [t for t in state.board if t.is_property() and t.group == group]
+    if not tiles:
+        return False
+    return all(t.sole_owner() == player_id for t in tiles)
 
 
 def player_property_value(state: "GameState", player_id: int) -> float:

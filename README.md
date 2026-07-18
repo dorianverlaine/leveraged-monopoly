@@ -46,16 +46,17 @@ src/monopoly/
 ├── engine/                # The deterministic kernel — the heart of the system
 │   ├── rng.py             # SplitMix64 seeded PRNG (deterministic, portable)
 │   ├── state.py           # GameState, GameConfig, TurnState, Transaction, new_game()
-│   ├── board.py           # Tile / ring generation (24 / 36 / 44), fractional ownership
+│   ├── board.py           # 3-city themed ring (HK/Paris/NY), groups, development
 │   ├── player.py          # Player + lifecycle status
 │   ├── market.py          # Price index, money supply, shock clock
 │   ├── actions.py         # The action space (intents clients may send)
 │   ├── errors.py          # Typed RuleError codes (the engine is total)
-│   ├── valuation.py       # Derived metrics: net worth, collateral, margin ratio
+│   ├── valuation.py       # Derived metrics: net worth, collateral, monopoly
 │   ├── reducer.py         # reduce(state, action) — the one pure entry point
 │   └── mechanics/         # One module per rule layer:
 │       ├── movement.py         #   dice, moving the ring, GO salary
-│       ├── trading.py          #   buying property, paying rent
+│       ├── trading.py          #   buying property, paying rent (+monopoly bonus)
+│       ├── building.py         #   develop a monopoly (houses → skyscraper)
 │       ├── leverage.py         #   borrowing, repaying, mortgaging
 │       ├── securitization.py   #   IPO a slice of a property for cash
 │       ├── margin.py           #   margin calls, forced liquidation, bankruptcy
@@ -109,6 +110,27 @@ arithmetic:
 
 All the knobs (player count, map size, inflation rate, maintenance ratio, shock
 cadence, victory condition) are **data** in `GameConfig`, never hardcoded.
+
+### The board & development (the classic strategic spine)
+
+The map is three real financial capitals — **Hong Kong, Paris, New York** — laid
+out as three contiguous districts on one ring ([`engine/board.py`](src/monopoly/engine/board.py)).
+Each city is a **property group**:
+
+- **Monopoly bonus.** Sole-own *every* landmark of a city and its rent **doubles**.
+- **Development.** A monopoly can be built up — houses → a skyscraper
+  ([`mechanics/building.py`](src/monopoly/engine/mechanics/building.py)) — each
+  level multiplying rent sharply (up to ~120× base at the top).
+- **Interactions.** A developed landmark can't be mortgaged or securitized until
+  its buildings are sold; a margin call / bankruptcy demolishes them. Securitizing
+  any share of a city forfeits its monopoly. This is the substrate the capital
+  layers detonate: leverage to complete a set, then a shock wipes out the
+  over-developed player.
+
+> **Known design gap:** completing a whole-city monopoly by landing alone is hard
+> — classic Monopoly completes sets via **player-to-player trading**, which isn't
+> built yet. It's the natural next feature to make development a common, not rare,
+> part of a game.
 
 ---
 
