@@ -47,6 +47,28 @@ def test_replay_reproduces_final_state():
     assert replayed_players == original_players
 
 
+def test_harsh_games_always_terminate_cleanly():
+    # Regression: a round-boundary shock can bankrupt the seat about to receive
+    # the turn. The turn cycle must never leave a bankrupt player "active" (which
+    # used to deadlock the loop into a truncated game). No seed may truncate.
+    from monopoly.engine.state import GameConfig, VictoryCondition
+
+    config = GameConfig(
+        max_players=6,
+        map_size=24,
+        victory_condition=VictoryCondition.LAST_SOLVENT,
+        round_limit=40,
+        inflation_rate=0.03,
+        interest_rate=0.08,
+        shock_interval_rounds=3,   # frequent, brutal shocks
+        shock_magnitude=0.45,
+    )
+    for seed in range(25):
+        result = play_game(config, seed, roster=build_roster(config))
+        assert not result.truncated, f"seed {seed} truncated"
+        assert result.winner_id is not None
+
+
 def test_backtest_batch_produces_win_distribution():
     config = standard_match(max_players=4)
     report = run_batch(

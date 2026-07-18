@@ -42,7 +42,10 @@ class GameConfig:
     map_size: int = 24
     victory_condition: str = VictoryCondition.LAST_SOLVENT
     net_worth_target: int = 5000          # used by NET_WORTH_TARGET
-    round_limit: int = 40                 # used by ROUND_LIMIT
+    # Universal hard cap: every game ends once this round is exceeded, regardless
+    # of victory_condition (guarantees termination). It is also the win trigger
+    # for the ROUND_LIMIT condition (highest net worth wins at the cap).
+    round_limit: int = 40
 
     starting_cash: int = 1500
 

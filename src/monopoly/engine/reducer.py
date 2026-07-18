@@ -221,36 +221,53 @@ def _handle_concede(state: GameState, action: Action) -> Union[None, RuleError]:
 # --- Turn cycle ------------------------------------------------------------
 
 def _advance_turn(state: GameState) -> None:
-    """Hand play to the next solvent player, applying round economics on wrap."""
-    n = len(state.players)
+    """Hand play to the next solvent player, applying round economics on wrap.
+
+    Ordering matters: a round-boundary shock can bankrupt players, *including the
+    seat we would otherwise hand the turn to*. So we detect the wrap, run the
+    round boundary first, and only then pick the next active seat from whoever is
+    still solvent -- never leaving a bankrupt player holding the turn.
+    """
     start = state.turn.active_player
 
-    next_idx = None
-    steps_taken = 0
-    for step in range(1, n + 1):
-        cand = (start + step) % n
-        if state.players[cand].status != PlayerStatus.BANKRUPT:
-            next_idx = cand
-            steps_taken = step
-            break
-
-    if next_idx is None:
-        # No solvent player remains besides (maybe) the current one -> game ends.
+    # First pass (pre-boundary): find the next solvent seat only to detect whether
+    # play wraps past the last seat, which is what marks a completed round.
+    first_next, steps = _next_solvent_seat(state, start)
+    if first_next is None:
         _check_victory(state)
         return
 
-    # We wrapped past the last seat back toward seat 0 -> a new round begins.
-    wrapped = (start + steps_taken) >= n
+    if (start + steps) >= len(state.players):
+        state.turn.round_number += 1
+        _apply_round_boundary(state)  # inflation, interest, shock -> may bankrupt
+        _check_victory(state)
+        if state.is_over():
+            return
+
+    # Re-select the active seat *after* the boundary, since solvency may have
+    # changed. If nobody solvent remains, the victory check above/below ends it.
+    next_idx, _ = _next_solvent_seat(state, start)
+    if next_idx is None:
+        _check_victory(state)
+        return
+
     state.turn.active_player = next_idx
     state.turn.last_roll = None
+    state.turn.phase = GamePhase.AWAIT_ROLL
 
-    if wrapped:
-        state.turn.round_number += 1
-        _apply_round_boundary(state)
 
-    _check_victory(state)
-    if not state.is_over():
-        state.turn.phase = GamePhase.AWAIT_ROLL
+def _next_solvent_seat(state: GameState, start: int):
+    """Return ``(index, steps)`` of the first non-bankrupt seat after ``start``.
+
+    Scans cyclically; ``steps`` is how many seats forward it is (used to detect a
+    round wrap). Returns ``(None, 0)`` if no other solvent seat exists.
+    """
+    n = len(state.players)
+    for step in range(1, n + 1):
+        cand = (start + step) % n
+        if state.players[cand].status != PlayerStatus.BANKRUPT:
+            return cand, step
+    return None, 0
 
 
 def _apply_round_boundary(state: GameState) -> None:
@@ -275,10 +292,13 @@ def _check_victory(state: GameState) -> None:
     if len(solvent) <= 1:
         # Universal terminal condition: a game cannot continue with <=1 player.
         over = True
+    elif state.turn.round_number > cfg.round_limit:
+        # Universal hard cap: every game must terminate. Even a LAST_SOLVENT game
+        # in which nobody ever goes bankrupt ends here (winner = highest net
+        # worth). Without this an online room could run forever.
+        over = True
     elif cfg.victory_condition == VictoryCondition.NET_WORTH_TARGET:
         over = any(valuation.net_worth(state, p.id) >= cfg.net_worth_target for p in solvent)
-    elif cfg.victory_condition == VictoryCondition.ROUND_LIMIT:
-        over = state.turn.round_number > cfg.round_limit
 
     if over:
         state.turn.phase = GamePhase.GAME_OVER
