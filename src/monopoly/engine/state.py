@@ -85,6 +85,12 @@ class GameConfig:
             "securitization_haircut": self.securitization_haircut,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "GameConfig":
+        """Rebuild a config from its wire dict (used to reconstruct a persisted
+        game for replay). Field names match ``to_dict`` exactly."""
+        return cls(**data)
+
 
 @dataclass
 class TurnState:

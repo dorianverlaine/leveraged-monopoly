@@ -68,10 +68,21 @@ src/monopoly/
 │   └── registry.py        #   name -> policy lookup (drop-in agents)
 ├── config/                # Pacing presets (quick/standard/long) + roster builder
 ├── simulation/            # Headless game loop, replay, Monte-Carlo backtest
-│   ├── runner.py          #   play_game(...) and replay(...)
+│   ├── runner.py          #   play_game(...), replay(...), summarize_game(...)
 │   └── backtest.py        #   run_batch(...) -> win-rate distributions
-└── cli.py                 # `monopoly-demo` — play a game in the terminal
-tests/                     # pytest suite (determinism, mechanics, full games)
+├── realtime/              # Authoritative WebSocket rooms (P1 transport)
+│   ├── room.py            #   GameRoom — transport-agnostic, unit-tested
+│   ├── hub.py              #   GameHub matchmaker + room codes
+│   ├── protocol.py        #   the JSON wire contract (frontend spec)
+│   ├── hints.py           #   best-effort "available actions" for the UI
+│   └── server.py          #   `monopoly-server` — thin websockets adapter
+├── persistence/           # Completed-game records, replays, player stats (SQLite)
+│   ├── db.py              #   connection + schema (local stand-in for D1)
+│   └── store.py           #   GameStore — the only repository API callers use
+├── cli.py                 # `monopoly-demo` — play a game in the terminal
+└── history_cli.py         # `monopoly-history` — inspect recorded games
+tests/                     # pytest suite (determinism, mechanics, full games,
+                            # realtime rooms, persistence)
 ```
 
 ---
@@ -176,6 +187,45 @@ Key properties:
   game never stalls; reconnect with your token to resync the full state.
 - **Join by code.** 4-character room codes from an unambiguous alphabet.
 
+### Persistence: game history & replays (P1)
+
+Completed games are recorded to a small SQLite database — the local stand-in for
+the D1 tables in the cloud design (architecture 7.3, 9). The schema and
+connection layer live in [`persistence/db.py`](src/monopoly/persistence/db.py);
+everything else talks only to the repository,
+[`persistence/store.py`](src/monopoly/persistence/store.py)'s `GameStore` — no
+other module touches `sqlite3` directly, so swapping the target to D1 later only
+touches `db.py`.
+
+```bash
+# The server records history by default (SQLite at ~/.local/share/leveraged-monopoly/games.db):
+monopoly-server
+
+# Disable it, or point at a specific file:
+monopoly-server --no-persist
+monopoly-server --db ./my-games.db
+
+# Inspect what's recorded:
+monopoly-history recent
+monopoly-history leaderboard
+monopoly-history replay <game_id>
+```
+
+What's stored per finished game: the config, the seed, the roster, and the full
+`action_log` — **the whole replay in a few KB**, exactly like the headless
+simulation's `GameResult` (`realtime/room.py`'s `GameRoom.to_game_result()` and
+`monopoly.simulation.summarize_game()` produce the identical shape, so live
+multiplayer games and backtest games persist through one code path). `replay`
+re-runs the stored `seed + action_log` through the engine and prints the
+recomputed standings — proving the record matches what the engine actually
+produces.
+
+Players are optionally identified by an opaque `player_key` the client supplies
+(e.g. from `localStorage`) purely to accrue cross-game stats for the
+leaderboard — **never a credential**; per architecture 11, auth (if ever added)
+belongs to a dedicated provider, not the game itself. Omit it to play as an
+anonymous guest — the game still gets recorded, it just accrues no stats.
+
 ---
 
 ## Design principles
@@ -197,9 +247,9 @@ Key properties:
 - **Done (P0):** deterministic engine, bots, headless simulation + backtest.
 - **Done (P1 transport):** authoritative rooms behind a WebSocket server
   (join-by-code, bots, reconnection, anti-cheat).
-- **Next (P1 persistence):** accounts, completed-game records, and replay storage
-  (D1/KV/R2 in the cloud design; SQLite/Postgres works locally). Then a thin
-  React client against the protocol above.
+- **Done (P1 persistence):** completed-game records, replays, and a leaderboard
+  in SQLite (the local stand-in for D1); `monopoly-history` CLI.
+- **Next:** a thin React client against the `realtime/protocol.py` contract.
 - **Later (P2):** freeze the proven rules into a Rust kernel (WASM at the edge,
   native + PyO3 for the AWS Monte-Carlo backtest cluster); RL bots.
 

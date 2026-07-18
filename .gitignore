@@ -23,3 +23,9 @@ htmlcov/
 .vscode/
 *.swp
 .DS_Store
+
+# Local game-history database (default path for `monopoly-server`/`monopoly-history`)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
