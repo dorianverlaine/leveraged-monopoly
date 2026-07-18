@@ -76,13 +76,19 @@ src/monopoly/
 │   ├── protocol.py        #   the JSON wire contract (frontend spec)
 │   ├── hints.py           #   best-effort "available actions" for the UI
 │   └── server.py          #   `monopoly-server` — thin websockets adapter
-├── persistence/           # Completed-game records, replays, player stats (SQLite)
-│   ├── db.py              #   connection + schema (local stand-in for D1)
-│   └── store.py           #   GameStore — the only repository API callers use
+├── persistence/           # Completed-game records + replays (SQLite ≈ D1)
+│   ├── db.py              #   connection + schema (accounts, sessions, games…)
+│   └── store.py           #   GameStore — game records, replays, match history
+├── accounts/              # Passwordless identity + chess.com/Duolingo progression
+│   ├── progression.py     #   pure XP / level curve + multiplayer Elo maths
+│   ├── store.py           #   AccountStore — guests, sessions, profile, leaderboard
+│   ├── service.py         #   record_finished_game — save game + update accounts
+│   └── models.py          #   Account + GameOutcome value objects
 ├── cli.py                 # `monopoly-demo` — play a game in the terminal
-└── history_cli.py         # `monopoly-history` — inspect recorded games
+└── history_cli.py         # `monopoly-history` — recent games, leaderboard, replay
 tests/                     # pytest suite (determinism, mechanics, full games,
-                            # realtime rooms, persistence)
+                            # realtime rooms, persistence, accounts)
+docs/i18n.md               # the frontend i18n contract (4 languages)
 ```
 
 ---
@@ -220,11 +226,40 @@ re-runs the stored `seed + action_log` through the engine and prints the
 recomputed standings — proving the record matches what the engine actually
 produces.
 
-Players are optionally identified by an opaque `player_key` the client supplies
-(e.g. from `localStorage`) purely to accrue cross-game stats for the
-leaderboard — **never a credential**; per architecture 11, auth (if ever added)
-belongs to a dedicated provider, not the game itself. Omit it to play as an
-anonymous guest — the game still gets recorded, it just accrues no stats.
+### Accounts & progression (P1)
+
+A **passwordless** account system gives the chess.com / Duolingo-style spine the
+frontend needs: persistent identity, profile, and progression. It never collects
+or stores a password — an account is keyed by a guest *device key* (or, later, an
+external provider's subject id); the credential exchange always happens at that
+provider, never in the game (architecture 11).
+
+- **Identity** ([`accounts/store.py`](src/monopoly/accounts/store.py)): guest
+  accounts with a "remember-me" device key, opaque server-issued **session
+  tokens**, and profile fields (display name, avatar, **locale**).
+- **Progression** ([`accounts/progression.py`](src/monopoly/accounts/progression.py),
+  pure maths): **XP + levels** (always-up, Duolingo-style) and a **multiplayer
+  Elo rating** (a ladder that can go down, chess.com-style), plus win streaks.
+  Playing solo against bots earns XP but doesn't move your rating.
+- **Wiring**: authenticate over WebSocket (`authenticate` → `authenticated`),
+  then pass the `session` token to `create_room` / `join_room`. When a game ends,
+  [`record_finished_game`](src/monopoly/accounts/service.py) saves the record and
+  updates every human account's XP / level / rating / streak in one step. Play
+  without logging in and you're an anonymous guest — the game is still recorded,
+  it just earns no progression.
+
+```bash
+monopoly-history leaderboard --by rating   # or --by xp / --by wins
+```
+
+### Internationalization
+
+The frontend targets four languages — **English, 繁體中文, 简体中文, Français**.
+The backend is language-neutral: it emits **stable codes** (`RuleErrorCode`,
+ledger `kind`, `ActionType`) and English only as a developer fallback, so the
+frontend translates by code and never shows server English. Each account stores
+its `locale`. The full contract and a starter glossary are in
+[`docs/i18n.md`](docs/i18n.md).
 
 ---
 
@@ -247,9 +282,12 @@ anonymous guest — the game still gets recorded, it just accrues no stats.
 - **Done (P0):** deterministic engine, bots, headless simulation + backtest.
 - **Done (P1 transport):** authoritative rooms behind a WebSocket server
   (join-by-code, bots, reconnection, anti-cheat).
-- **Done (P1 persistence):** completed-game records, replays, and a leaderboard
+- **Done (P1 persistence):** completed-game records, replays, and match history
   in SQLite (the local stand-in for D1); `monopoly-history` CLI.
-- **Next:** a thin React client against the `realtime/protocol.py` contract.
+- **Done (P1 accounts):** passwordless identity, sessions, and progression
+  (XP / levels / Elo / streaks); 4-language i18n contract for the frontend.
+- **Next:** a thin, multilingual React client (Duolingo / chess.com styling)
+  against the `realtime/protocol.py` + `docs/i18n.md` contracts.
 - **Later (P2):** freeze the proven rules into a Rust kernel (WASM at the edge,
   native + PyO3 for the AWS Monte-Carlo backtest cluster); RL bots.
 

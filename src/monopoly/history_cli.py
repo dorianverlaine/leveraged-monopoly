@@ -1,9 +1,9 @@
-"""Command-line inspector for persisted game history.
+"""Command-line inspector for persisted accounts and game history.
 
 Usage::
 
     monopoly-history recent [--limit N] [--db PATH]
-    monopoly-history leaderboard [--limit N] [--db PATH]
+    monopoly-history leaderboard [--by rating|xp|wins] [--limit N] [--db PATH]
     monopoly-history replay GAME_ID [--db PATH]
 
 ``replay`` re-runs a stored ``seed + action_log`` through the engine and prints
@@ -16,13 +16,14 @@ from __future__ import annotations
 import argparse
 from typing import List, Optional
 
+from .accounts.store import AccountStore
 from .engine import valuation
 from .persistence import db as persistence_db
 from .persistence.store import GameStore
 
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Inspect Leveraged Monopoly game history.")
+    parser = argparse.ArgumentParser(description="Inspect Leveraged Monopoly accounts and history.")
     parser.add_argument(
         "--db", default=None, help=f"SQLite path (default: {persistence_db.DEFAULT_DB_PATH})"
     )
@@ -31,8 +32,9 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     recent = sub.add_parser("recent", help="List the most recently finished games.")
     recent.add_argument("--limit", type=int, default=20)
 
-    board = sub.add_parser("leaderboard", help="Rank players by wins.")
+    board = sub.add_parser("leaderboard", help="Rank accounts by rating, xp, or wins.")
     board.add_argument("--limit", type=int, default=20)
+    board.add_argument("--by", choices=["rating", "xp", "wins"], default="rating")
 
     replay_cmd = sub.add_parser("replay", help="Re-run a stored game and print its winner.")
     replay_cmd.add_argument("game_id")
@@ -43,14 +45,15 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
     conn = persistence_db.connect(args.db or persistence_db.DEFAULT_DB_PATH)
-    store = GameStore(conn)
+    game_store = GameStore(conn)
+    account_store = AccountStore(conn)
 
     if args.command == "recent":
-        _print_recent(store, args.limit)
+        _print_recent(game_store, args.limit)
     elif args.command == "leaderboard":
-        _print_leaderboard(store, args.limit)
+        _print_leaderboard(account_store, args.limit, args.by)
     elif args.command == "replay":
-        _print_replay(store, args.game_id)
+        _print_replay(game_store, args.game_id)
     return 0
 
 
@@ -67,16 +70,16 @@ def _print_recent(store: GameStore, limit: int) -> None:
         )
 
 
-def _print_leaderboard(store: GameStore, limit: int) -> None:
-    rows = store.leaderboard(limit)
+def _print_leaderboard(store: AccountStore, limit: int, by: str) -> None:
+    rows = store.leaderboard(limit, by=by)
     if not rows:
-        print("No players with a tracked identity have played yet.")
+        print("No accounts have played yet.")
         return
-    print(f"{'name':<20}{'played':>8}{'won':>8}{'win_rate':>10}")
+    print(f"{'name':<20}{'level':>6}{'rating':>8}{'played':>8}{'won':>6}{'streak':>8}")
     for r in rows:
         print(
-            f"{r['display_name']:<20}{r['games_played']:>8}{r['games_won']:>8}"
-            f"{r['win_rate']:>10.1%}"
+            f"{r['display_name']:<20}{r['level']:>6}{r['rating']:>8}"
+            f"{r['games_played']:>8}{r['games_won']:>6}{r['best_win_streak']:>8}"
         )
 
 

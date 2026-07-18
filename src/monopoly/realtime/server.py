@@ -23,6 +23,8 @@ import json
 import uuid
 from typing import Dict, Optional
 
+from ..accounts import record_finished_game
+from ..accounts.store import AccountStore
 from ..persistence import db as persistence_db
 from ..persistence.store import GameStore
 from .hub import GameHub, resolve_config
@@ -41,21 +43,28 @@ class Connection:
         self.session_id = session_id
         self.ws = ws
         self.room: Optional[GameRoom] = None
+        # Set once the client authenticates (guest or session token).
+        self.account_id: Optional[str] = None
 
 
 class RealtimeServer:
     """Owns the hub, the connection table, and the broadcast machinery.
 
-    ``store`` is an optional :class:`~monopoly.persistence.store.GameStore`. When
-    provided, every room's finished game is persisted exactly once (architecture
-    7.3, 9). Pass ``None`` (the default) to run with persistence disabled, e.g.
-    for tests or an embedded/ephemeral use of this class -- the CLI entry point
-    (``main``) wires up a real database by default.
+    ``game_store`` / ``account_store`` are optional repositories. When both are
+    provided, every finished game is persisted exactly once and the participating
+    accounts get their XP / level / rating / streaks updated (architecture 7.3,
+    9). Pass ``None`` (the default) to run stateless, e.g. in tests -- the CLI
+    entry point (``main``) wires up a real database by default.
     """
 
-    def __init__(self, store: Optional[GameStore] = None) -> None:
+    def __init__(
+        self,
+        game_store: Optional[GameStore] = None,
+        account_store: Optional[AccountStore] = None,
+    ) -> None:
         self.hub = GameHub()
-        self.store = store
+        self.game_store = game_store
+        self.account_store = account_store
         # session_id -> Connection (the socket registry the room deliberately
         # does not hold, so the room stays transport-agnostic).
         self.connections: Dict[str, Connection] = {}
@@ -97,6 +106,7 @@ class RealtimeServer:
             return
 
         handlers = {
+            protocol.ClientMsg.AUTHENTICATE: self._authenticate,
             protocol.ClientMsg.CREATE_ROOM: self._create_room,
             protocol.ClientMsg.JOIN_ROOM: self._join_room,
             protocol.ClientMsg.RECONNECT: self._reconnect,
@@ -109,11 +119,47 @@ class RealtimeServer:
             return
         await handler(conn, msg)
 
+    async def _authenticate(self, conn: Connection, msg: dict) -> None:
+        """Log the connection in as a guest (optionally reclaiming an account) or
+        via an existing session token, binding it to an account for progression."""
+        if self.account_store is None:
+            await self._send(conn, protocol.error("no_accounts", "Accounts are disabled on this server"))
+            return
+
+        mode = msg.get("mode", "guest")
+        if mode == "session":
+            account = self.account_store.account_for_session(msg.get("token", ""))
+            if account is None:
+                await self._send(conn, protocol.error("bad_session", "Session token not recognised"))
+                return
+            conn.account_id = account.id
+            await self._send(conn, protocol.authenticated(msg["token"], account.public_profile()))
+            return
+
+        # Guest mode: reclaim by device key if given, else create a new guest.
+        device_key = msg.get("device_key")
+        new_device_key: Optional[str] = None
+        if device_key:
+            reclaimed = self.account_store.login_guest(device_key)
+            if reclaimed is None:
+                await self._send(conn, protocol.error("bad_device_key", "Guest account not found"))
+                return
+            account, token = reclaimed
+        else:
+            account, new_device_key, token = self.account_store.create_guest(
+                display_name=msg.get("name"), locale=msg.get("locale")
+            )
+        conn.account_id = account.id
+        await self._send(
+            conn, protocol.authenticated(token, account.public_profile(), device_key=new_device_key)
+        )
+
     async def _create_room(self, conn: Connection, msg: dict) -> None:
+        account = self._resolve_account(conn, msg)
         config = resolve_config(msg.get("preset", "quick"), int(msg.get("players", 4)))
         room = self.hub.create_room(config)
         seat_token = room.add_human(
-            conn.session_id, msg.get("name", "Host"), player_key=msg.get("player_key")
+            conn.session_id, self._seat_name(msg, account, "Host"), account_id=conn.account_id
         )
         if seat_token is None:  # should not happen on a fresh room
             await self._send(conn, protocol.error("room_full", "Room is full"))
@@ -124,12 +170,13 @@ class RealtimeServer:
         await self._broadcast_lobby(room)
 
     async def _join_room(self, conn: Connection, msg: dict) -> None:
+        account = self._resolve_account(conn, msg)
         room = self.hub.get(msg.get("room", ""))
         if room is None:
             await self._send(conn, protocol.error("no_such_room", "Room not found"))
             return
         seat_token = room.add_human(
-            conn.session_id, msg.get("name", "Player"), player_key=msg.get("player_key")
+            conn.session_id, self._seat_name(msg, account, "Player"), account_id=conn.account_id
         )
         if seat_token is None:
             await self._send(conn, protocol.error("cannot_join", "Room is full or already started"))
@@ -138,6 +185,23 @@ class RealtimeServer:
         conn.room = room
         await self._send(conn, protocol.joined(room.code, seat, token))
         await self._broadcast_lobby(room)
+
+    def _resolve_account(self, conn: Connection, msg: dict):
+        """Bind the connection to an account from an inline ``session`` token, if
+        provided and not already authenticated. Returns the account or ``None``."""
+        if conn.account_id is None and self.account_store is not None and msg.get("session"):
+            account = self.account_store.account_for_session(msg["session"])
+            if account is not None:
+                conn.account_id = account.id
+                return account
+        if conn.account_id is not None and self.account_store is not None:
+            return self.account_store.get_account(conn.account_id)
+        return None
+
+    @staticmethod
+    def _seat_name(msg: dict, account, fallback: str) -> str:
+        """Pick a display name: explicit > account profile > fallback."""
+        return msg.get("name") or (account.display_name if account else None) or fallback
 
     async def _reconnect(self, conn: Connection, msg: dict) -> None:
         room = self.hub.get(msg.get("room", ""))
@@ -207,21 +271,29 @@ class RealtimeServer:
         self._maybe_persist(room)
 
     def _maybe_persist(self, room: GameRoom) -> None:
-        """Persist a room's completed game the first time it is seen finished.
+        """Persist a room's completed game (and update accounts) once, when done.
 
-        Synchronous and cheap (a couple of local SQLite inserts) so it is safe to
-        call from the broadcast path without awaiting; ``room.persisted`` makes
-        this idempotent even if called from multiple broadcast points.
+        Synchronous and cheap (a few local SQLite writes) so it is safe to call
+        from the broadcast path without awaiting; ``room.persisted`` makes this
+        idempotent even if called from multiple broadcast points. Requires both
+        stores; with either missing, persistence is simply skipped.
         """
-        if self.store is None or room.phase != RoomPhase.OVER or room.persisted:
+        if (
+            self.game_store is None
+            or self.account_store is None
+            or room.phase != RoomPhase.OVER
+            or room.persisted
+        ):
             return
         result = room.to_game_result()
         if result is None:
             return
-        self.store.save_completed_game(
+        record_finished_game(
+            self.game_store,
+            self.account_store,
             result,
+            account_ids_by_seat=room.account_ids(),
             room_code=room.code,
-            player_keys=room.player_keys(),
             started_at=room.started_at,
             ended_at=room.ended_at,
         )
@@ -243,7 +315,12 @@ class RealtimeServer:
             pass
 
 
-async def _serve(host: str, port: int, store: Optional[GameStore]) -> None:
+async def _serve(
+    host: str,
+    port: int,
+    game_store: Optional[GameStore],
+    account_store: Optional[AccountStore],
+) -> None:
     # Lazy import so the optional dependency is only required to actually serve.
     try:
         import websockets
@@ -253,11 +330,11 @@ async def _serve(host: str, port: int, store: Optional[GameStore]) -> None:
             "Install it with:  pip install -e \".[realtime]\""
         ) from exc
 
-    server = RealtimeServer(store=store)
+    server = RealtimeServer(game_store=game_store, account_store=account_store)
     async with websockets.serve(server.handle, host, port):
         print(f"Leveraged Monopoly realtime server listening on ws://{host}:{port}")
-        if store is not None:
-            print("Game history is being recorded (see monopoly-history).")
+        if game_store is not None:
+            print("Accounts + game history are being recorded (see monopoly-history).")
         await asyncio.Future()  # run forever
 
 
@@ -268,20 +345,25 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--db",
         default=None,
-        help=f"SQLite path for game history (default: {persistence_db.DEFAULT_DB_PATH})",
+        help=f"SQLite path for accounts + game history (default: {persistence_db.DEFAULT_DB_PATH})",
     )
     parser.add_argument(
-        "--no-persist", action="store_true", help="Disable game-history persistence entirely"
+        "--no-persist",
+        action="store_true",
+        help="Disable persistence entirely (no accounts, no game history)",
     )
     args = parser.parse_args(argv)
 
-    store = None
+    game_store = None
+    account_store = None
     if not args.no_persist:
+        # Accounts and game history share one database (one identity model).
         conn = persistence_db.connect(args.db or persistence_db.DEFAULT_DB_PATH)
-        store = GameStore(conn)
+        game_store = GameStore(conn)
+        account_store = AccountStore(conn)
 
     try:
-        asyncio.run(_serve(args.host, args.port, store))
+        asyncio.run(_serve(args.host, args.port, game_store, account_store))
     except KeyboardInterrupt:  # pragma: no cover
         print("\nShutting down.")
     return 0

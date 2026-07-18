@@ -11,19 +11,25 @@ claimed ``player_id`` -- it overrides it with the seat bound to that connection.
 
 Client -> Server
 ----------------
-* ``{"type": "create_room", "name": str, "preset": "quick|standard|long", "players": int, "player_key": str?}``
-* ``{"type": "join_room", "room": str, "name": str, "player_key": str?}``
+* ``{"type": "authenticate", "mode": "guest", "device_key": str?, "name": str?, "locale": str?}``
+* ``{"type": "authenticate", "mode": "session", "token": str}``
+* ``{"type": "create_room", "name": str?, "preset": "quick|standard|long", "players": int, "session": str?}``
+* ``{"type": "join_room", "room": str, "name": str?, "session": str?}``
 * ``{"type": "reconnect", "room": str, "token": str}``
-
-``player_key`` is optional: an opaque identity the client generates and persists
-itself (e.g. in ``localStorage``), used only so completed-game stats can be
-attributed across games (architecture 9). It is never a credential and never
-validated as one -- omit it to play as an anonymous guest.
 * ``{"type": "start"}``                              (host only)
 * ``{"type": "action", "action": {"type": ..., ...}}``  (player_id is ignored/overridden)
 
+``session`` is the token returned by ``authenticate``; it binds the seat to an
+account so progression (XP / level / rating) accrues. It is a server-issued
+bearer capability, never a password. Omit it (and skip ``authenticate``) to play
+as an anonymous guest -- the game still runs, it just earns no progression.
+``authenticate mode=guest`` with a stored ``device_key`` reclaims a previous
+guest account; without one it creates a new guest and returns a fresh
+``device_key`` for the client to remember.
+
 Server -> Client
 ----------------
+* ``{"type": "authenticated", "session": str, "device_key": str?, "account": <profile>}``
 * ``{"type": "room_created", "room": str, "seat": int, "token": str}``
 * ``{"type": "joined", "room": str, "seat": int, "token": str}``
 * ``{"type": "lobby", "room": str, "seats": [...], "host": int}``
@@ -41,6 +47,7 @@ from typing import Any, Dict, List
 class ClientMsg:
     """Message ``type`` values a client may send."""
 
+    AUTHENTICATE = "authenticate"
     CREATE_ROOM = "create_room"
     JOIN_ROOM = "join_room"
     RECONNECT = "reconnect"
@@ -51,6 +58,7 @@ class ClientMsg:
 class ServerMsg:
     """Message ``type`` values the server may send."""
 
+    AUTHENTICATED = "authenticated"
     ROOM_CREATED = "room_created"
     JOINED = "joined"
     LOBBY = "lobby"
@@ -60,6 +68,19 @@ class ServerMsg:
 
 
 # --- Server -> client builders --------------------------------------------
+
+def authenticated(session: str, account: dict, device_key: str | None = None) -> Dict[str, Any]:
+    """Confirm a login: the session token, the account profile, and (for a newly
+    created guest) the device key the client should store to return later."""
+    msg: Dict[str, Any] = {
+        "type": ServerMsg.AUTHENTICATED,
+        "session": session,
+        "account": account,
+    }
+    if device_key is not None:
+        msg["device_key"] = device_key
+    return msg
+
 
 def room_created(room: str, seat: int, token: str) -> Dict[str, Any]:
     return {"type": ServerMsg.ROOM_CREATED, "room": room, "seat": seat, "token": token}

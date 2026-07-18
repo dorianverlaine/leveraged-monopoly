@@ -57,9 +57,10 @@ class Seat:
     session_id: Optional[str] = None       # bound connection, if a human
     token: Optional[str] = None            # reconnection secret (humans only)
     connected: bool = False
-    # Opaque client-supplied identity (e.g. from localStorage) used only to
-    # accrue cross-game stats in persistence. Never an auth credential.
-    player_key: Optional[str] = None
+    # The account that holds this seat (resolved by the server from a session
+    # token), used to attribute progression when the game ends. None for bots or
+    # anonymous guests who played without logging in.
+    account_id: Optional[str] = None
 
     def summary(self) -> dict:
         """Public lobby view (never exposes the token)."""
@@ -122,14 +123,13 @@ class GameRoom:
     # --- Lobby ----------------------------------------------------------
 
     def add_human(
-        self, session_id: str, name: str, player_key: Optional[str] = None
+        self, session_id: str, name: str, account_id: Optional[str] = None
     ) -> Optional[tuple]:
         """Claim the lowest open bot seat for a human. Returns ``(seat, token)``.
 
-        ``player_key`` is an optional opaque client-supplied identity (e.g. from
-        ``localStorage``) used only to accrue cross-game stats in persistence;
-        leave it ``None`` for an anonymous guest. Returns ``None`` if the room is
-        full of humans or no longer in the lobby.
+        ``account_id`` is the logged-in account holding the seat (resolved by the
+        server from a session token), or ``None`` for an anonymous guest. Returns
+        ``None`` if the room is full of humans or no longer in the lobby.
         """
         if self.phase != RoomPhase.LOBBY:
             return None
@@ -141,7 +141,7 @@ class GameRoom:
                 seat.session_id = session_id
                 seat.token = secrets.token_urlsafe(16)
                 seat.connected = True
-                seat.player_key = player_key
+                seat.account_id = account_id
                 if self.host_seat is None:
                     self.host_seat = seat.index
                 return seat.index, seat.token
@@ -318,9 +318,9 @@ class GameRoom:
 
     # --- Persistence handoff ---------------------------------------------
 
-    def player_keys(self) -> Dict[int, Optional[str]]:
-        """Seat index -> the opaque client identity bound to it (or ``None``)."""
-        return {s.index: s.player_key for s in self.seats}
+    def account_ids(self) -> Dict[int, Optional[str]]:
+        """Seat index -> the account id bound to it (or ``None`` for bots/guests)."""
+        return {s.index: s.account_id for s in self.seats}
 
     def to_game_result(self) -> Optional[GameResult]:
         """Package the finished game the same way headless simulation does.

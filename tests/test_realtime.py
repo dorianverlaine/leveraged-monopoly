@@ -12,10 +12,10 @@ from monopoly.realtime.hub import GameHub, resolve_config
 from monopoly.realtime.room import RoomPhase
 
 
-def _room_with_host(players: int = 4, player_key=None):
+def _room_with_host(players: int = 4, account_id=None):
     hub = GameHub()
     room = hub.create_room(resolve_config("quick", players))
-    seat, token = room.add_human("sess-host", "Alice", player_key=player_key)
+    seat, token = room.add_human("sess-host", "Alice", account_id=account_id)
     return hub, room, seat, token
 
 
@@ -149,9 +149,9 @@ def test_resolve_config_clamps_player_count():
 
 
 # --- Persistence handoff ----------------------------------------------------
-# The room builds the GameResult / player_keys the persistence layer consumes;
-# see tests/test_persistence.py for the storage layer itself and
-# RealtimeServer._maybe_persist for how the two are wired together live.
+# The room builds the GameResult / account_ids the persistence layer consumes;
+# see tests/test_persistence.py and tests/test_accounts.py for the stores, and
+# RealtimeServer._maybe_persist for how they are wired together live.
 
 def test_to_game_result_is_none_before_game_over():
     hub, room, seat, token = _room_with_host()
@@ -161,7 +161,7 @@ def test_to_game_result_is_none_before_game_over():
 
 
 def test_to_game_result_matches_engine_after_completion():
-    hub, room, seat, token = _room_with_host(players=3, player_key="alice-key")
+    hub, room, seat, token = _room_with_host(players=3, account_id="acc-alice")
     room.start("sess-host")
     _run_to_completion(room)
 
@@ -175,38 +175,44 @@ def test_to_game_result_matches_engine_after_completion():
     assert result.winner_id == (win.id if win else None)
 
 
-def test_player_keys_reflects_seat_bindings():
-    hub, room, seat, token = _room_with_host(players=3, player_key="alice-key")
-    room.add_human("sess-bob", "Bob")  # no player_key -> anonymous guest
-    keys = room.player_keys()
-    assert keys[0] == "alice-key"
-    assert keys[1] is None
-    assert keys[2] is None  # untouched bot seat
+def test_account_ids_reflects_seat_bindings():
+    hub, room, seat, token = _room_with_host(players=3, account_id="acc-alice")
+    room.add_human("sess-bob", "Bob")  # no account_id -> anonymous guest
+    ids = room.account_ids()
+    assert ids[0] == "acc-alice"
+    assert ids[1] is None
+    assert ids[2] is None  # untouched bot seat
 
 
-def test_finished_room_persists_exactly_once_via_server():
+def test_finished_room_persists_and_updates_accounts_once_via_server():
+    from monopoly.accounts.store import AccountStore
     from monopoly.persistence import db
     from monopoly.persistence.store import GameStore
     from monopoly.realtime.server import RealtimeServer
 
-    store = GameStore(db.connect(":memory:"))
-    server = RealtimeServer(store=store)
+    conn = db.connect(":memory:")
+    game_store = GameStore(conn)
+    account_store = AccountStore(conn)
+    server = RealtimeServer(game_store=game_store, account_store=account_store)
 
-    hub, room, seat, token = _room_with_host(players=3, player_key="alice-key")
+    alice, _, _ = account_store.create_guest(display_name="Alice")
+    hub, room, seat, token = _room_with_host(players=3, account_id=alice.id)
     room.start("sess-host")
     _run_to_completion(room)
 
     server._maybe_persist(room)
     assert room.persisted is True
 
-    recent = store.list_recent_games(limit=5)
+    recent = game_store.list_recent_games(limit=5)
     assert len(recent) == 1
     assert recent[0]["room_code"] == room.code
 
-    board = store.leaderboard()
-    alice = next(r for r in board if r["player_key"] == "alice-key")
-    assert alice["games_played"] == 1
+    # Alice's account accrued a game via the coordinator.
+    alice2 = account_store.get_account(alice.id)
+    assert alice2.games_played == 1
+    assert alice2.xp > 0
 
     # Calling again must not create a second record (idempotent persistence).
     server._maybe_persist(room)
-    assert len(store.list_recent_games(limit=5)) == 1
+    assert len(game_store.list_recent_games(limit=5)) == 1
+    assert account_store.get_account(alice.id).games_played == 1

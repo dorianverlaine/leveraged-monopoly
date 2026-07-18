@@ -1,10 +1,15 @@
-"""Repository for completed games and player stats.
+"""Repository for completed-game records and replays.
 
-Fills the "games" + "users" role from the architecture's D1 plane (7.3, 9):
-persist the seed + action_log of every finished game (the whole replay in a few
-KB) plus enough participant rows to answer "how many games has X won" without
-re-parsing JSON. ``GameStore`` is the only thing the rest of the codebase talks
-to; it never leaks raw SQL to callers.
+Fills the "games" role from the architecture's D1 plane (7.3, 9): persist the
+seed + action_log of every finished game (the whole replay in a few KB) plus a
+participant row per seat. ``GameStore`` is the only thing that touches the game
+tables; it never leaks raw SQL to callers.
+
+Player *progression* (XP, level, rating, streaks) is a separate concern and lives
+in :class:`monopoly.accounts.store.AccountStore`; the two are joined by the
+optional ``account_id`` recorded on each participant.
+:func:`monopoly.accounts.service.record_finished_game` is the coordinator that
+saves a game here and updates accounts there in one step.
 
 Every finished game -- headless simulation or live multiplayer room -- produces
 the same :class:`~monopoly.simulation.runner.GameResult` shape, so
@@ -31,7 +36,7 @@ def utc_now_iso() -> str:
 
 
 class GameStore:
-    """SQLite-backed repository for completed games, participants, and users."""
+    """SQLite-backed repository for completed-game records and their replays."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
@@ -42,17 +47,18 @@ class GameStore:
         self,
         result: GameResult,
         room_code: str,
-        player_keys: Optional[Dict[int, Optional[str]]] = None,
+        account_ids_by_seat: Optional[Dict[int, Optional[str]]] = None,
         started_at: Optional[str] = None,
         ended_at: Optional[str] = None,
     ) -> str:
-        """Persist a finished game and update participant/user stats.
+        """Persist a finished game and its per-seat participant rows.
 
-        ``player_keys`` maps seat index -> an opaque client-supplied identity, or
-        ``None``/absent for bots and anonymous humans (their game still gets
-        recorded; they just accrue no cross-game stats). Returns the new game id.
+        ``account_ids_by_seat`` maps seat index -> the account that held the seat,
+        or ``None``/absent for bots and anonymous guests (their game still gets
+        recorded; they just aren't linked to an account). Progression updates are
+        the coordinator's job, not this method's. Returns the new game id.
         """
-        player_keys = player_keys or {}
+        account_ids = account_ids_by_seat or {}
         game_id = uuid.uuid4().hex
         now = utc_now_iso()
         roster = [
@@ -89,18 +95,17 @@ class GameStore:
             for p in result.final_players:
                 seat = p["id"]
                 is_winner = seat == result.winner_id
-                key = player_keys.get(seat)
                 self._conn.execute(
                     """
                     INSERT INTO game_participants (
-                        game_id, seat, player_key, name, is_bot, policy,
+                        game_id, seat, account_id, name, is_bot, policy,
                         net_worth, status, is_winner
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         game_id,
                         seat,
-                        key,
+                        account_ids.get(seat),
                         p["name"],
                         int(p["is_bot"]),
                         p.get("policy", ""),
@@ -109,25 +114,8 @@ class GameStore:
                         int(is_winner),
                     ),
                 )
-                if key:
-                    self._upsert_user_stats(key, p["name"], won=is_winner, when=now)
 
         return game_id
-
-    def _upsert_user_stats(self, player_key: str, display_name: str, won: bool, when: str) -> None:
-        """Create or update a user's running stats after one of their games."""
-        self._conn.execute(
-            """
-            INSERT INTO users (player_key, display_name, games_played, games_won, first_seen, last_seen)
-            VALUES (?, ?, 1, ?, ?, ?)
-            ON CONFLICT(player_key) DO UPDATE SET
-                display_name = excluded.display_name,
-                games_played = games_played + 1,
-                games_won = games_won + excluded.games_won,
-                last_seen = excluded.last_seen
-            """,
-            (player_key, display_name, int(won), when, when),
-        )
 
     # --- Reading ------------------------------------------------------------
 
@@ -148,19 +136,36 @@ class GameStore:
         ).fetchall()
         return [self._game_row_to_dict(row, participants=None) for row in rows]
 
-    def leaderboard(self, limit: int = 20) -> List[dict]:
-        """Return known players ranked by win count, most wins first."""
+    def games_for_account(self, account_id: str, limit: int = 20) -> List[dict]:
+        """Return the most recent games an account played in, newest first.
+
+        Each entry is the game record joined with that account's own result
+        (seat, net worth, whether they won) -- the raw material for a match
+        history / profile page.
+        """
         rows = self._conn.execute(
             """
-            SELECT player_key, display_name, games_played, games_won,
-                   CAST(games_won AS REAL) / games_played AS win_rate
-            FROM users
-            ORDER BY games_won DESC, win_rate DESC
+            SELECT g.*, p.seat AS my_seat, p.net_worth AS my_net_worth,
+                   p.status AS my_status, p.is_winner AS my_is_winner
+            FROM game_participants p
+            JOIN games g ON g.id = p.game_id
+            WHERE p.account_id = ?
+            ORDER BY g.ended_at DESC
             LIMIT ?
             """,
-            (limit,),
+            (account_id, limit),
         ).fetchall()
-        return [dict(row) for row in rows]
+        history = []
+        for row in rows:
+            entry = self._game_row_to_dict(row, participants=None)
+            entry["my_result"] = {
+                "seat": row["my_seat"],
+                "net_worth": row["my_net_worth"],
+                "status": row["my_status"],
+                "is_winner": bool(row["my_is_winner"]),
+            }
+            history.append(entry)
+        return history
 
     def replay_game(self, game_id: str) -> GameState:
         """Reconstruct the final ``GameState`` for a stored game by re-running it.

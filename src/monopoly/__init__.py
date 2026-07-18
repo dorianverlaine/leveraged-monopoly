@@ -24,7 +24,7 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
-from . import bots, config, engine, simulation
+from . import accounts, bots, config, engine, persistence, simulation
 from .engine import (
     Action,
     GameConfig,
@@ -37,9 +37,11 @@ from .engine import (
 
 __all__ = [
     "__version__",
+    "accounts",
     "bots",
     "config",
     "engine",
+    "persistence",
     "simulation",
     "Action",
     "GameConfig",

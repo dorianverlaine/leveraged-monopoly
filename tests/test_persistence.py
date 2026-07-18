@@ -1,4 +1,4 @@
-"""Tests for the persistence layer: schema, save/read round-trip, replay, stats."""
+"""Tests for the game-record persistence layer: save/read, replay, history."""
 
 from __future__ import annotations
 
@@ -40,6 +40,16 @@ def test_save_and_get_game_round_trips(store: GameStore):
     assert len(record["participants"]) == len(result.final_players)
 
 
+def test_account_id_recorded_on_participants(store: GameStore):
+    config, result = _play_one(seed=1, players=2)
+    # Bind seat 0 to an account id; seat 1 stays null (bot/anonymous).
+    game_id = store.save_completed_game(result, room_code="ACCT", account_ids_by_seat={0: "acc-123"})
+    record = store.get_game(game_id)
+    by_seat = {p["seat"]: p for p in record["participants"]}
+    assert by_seat[0]["account_id"] == "acc-123"
+    assert by_seat[1]["account_id"] is None
+
+
 def test_get_unknown_game_returns_none(store: GameStore):
     assert store.get_game("nope") is None
 
@@ -53,6 +63,21 @@ def test_list_recent_games_orders_newest_first(store: GameStore):
     recent = store.list_recent_games(limit=10)
     ids = [g["id"] for g in recent]
     assert ids.index(id2) < ids.index(id1)  # id2 ended later -> comes first
+
+
+def test_games_for_account_returns_only_that_accounts_games(store: GameStore):
+    _, r1 = _play_one(seed=1, players=2)
+    store.save_completed_game(r1, room_code="G1", account_ids_by_seat={0: "acc-A"})
+    _, r2 = _play_one(seed=2, players=2)
+    store.save_completed_game(r2, room_code="G2", account_ids_by_seat={1: "acc-B"})
+
+    a_games = store.games_for_account("acc-A")
+    assert len(a_games) == 1
+    assert a_games[0]["room_code"] == "G1"
+    assert a_games[0]["my_result"]["seat"] == 0
+    assert "is_winner" in a_games[0]["my_result"]
+
+    assert store.games_for_account("acc-nobody") == []
 
 
 # --- Replay (audit) ---------------------------------------------------------
@@ -71,49 +96,6 @@ def test_replay_game_reproduces_stored_winner(store: GameStore):
 def test_replay_unknown_game_raises(store: GameStore):
     with pytest.raises(KeyError):
         store.replay_game("nope")
-
-
-# --- User stats / leaderboard -----------------------------------------------
-
-def test_player_key_accrues_stats_across_games(store: GameStore):
-    config, result = _play_one(seed=7, players=2)
-    # Attribute seat 0 to a tracked identity regardless of who actually won;
-    # we just verify games_played increments and games_won reflects wins.
-    keys = {0: "alice-key"}
-
-    store.save_completed_game(result, room_code="G1", player_keys=keys)
-    board = store.leaderboard()
-    alice = next(r for r in board if r["player_key"] == "alice-key")
-    assert alice["games_played"] == 1
-    assert alice["games_won"] == (1 if result.winner_id == 0 else 0)
-
-    # A second game for the same identity accumulates.
-    _, result2 = _play_one(seed=8, players=2)
-    store.save_completed_game(result2, room_code="G2", player_keys=keys)
-    board = store.leaderboard()
-    alice = next(r for r in board if r["player_key"] == "alice-key")
-    assert alice["games_played"] == 2
-
-
-def test_anonymous_participants_do_not_create_user_rows(store: GameStore):
-    config, result = _play_one(seed=3, players=2)
-    store.save_completed_game(result, room_code="ANON")  # no player_keys at all
-    assert store.leaderboard() == []
-
-
-def test_leaderboard_orders_by_wins_desc(store: GameStore):
-    # Seed/roster chosen so each game has a determinate winner; we only assert
-    # ordering behaviour, not which seed wins.
-    _, r1 = _play_one(seed=11, players=2)
-    store.save_completed_game(r1, room_code="G1", player_keys={0: "p0", 1: "p1"})
-    _, r2 = _play_one(seed=12, players=2)
-    store.save_completed_game(r2, room_code="G2", player_keys={0: "p0", 1: "p1"})
-
-    board = store.leaderboard()
-    win_counts = {row["player_key"]: row["games_won"] for row in board}
-    ordered_wins = [row["games_won"] for row in board]
-    assert ordered_wins == sorted(ordered_wins, reverse=True)
-    assert sum(win_counts.values()) == 2  # exactly two games, one winner each
 
 
 # --- Schema sanity -----------------------------------------------------------
