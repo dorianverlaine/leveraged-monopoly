@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from ..bots.registry import make_policy
@@ -27,7 +28,12 @@ from ..engine.errors import RuleError
 from ..engine.player import Player, PlayerStatus
 from ..engine.reducer import reduce
 from ..engine.state import GameConfig, GameState, new_game
+from ..simulation.runner import GameResult, summarize_game
 from . import hints, protocol
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 # Upper bound on bot steps processed in one drive, so a pathological state can
 # never spin forever inside the server event loop.
@@ -51,6 +57,9 @@ class Seat:
     session_id: Optional[str] = None       # bound connection, if a human
     token: Optional[str] = None            # reconnection secret (humans only)
     connected: bool = False
+    # Opaque client-supplied identity (e.g. from localStorage) used only to
+    # accrue cross-game stats in persistence. Never an auth credential.
+    player_key: Optional[str] = None
 
     def summary(self) -> dict:
         """Public lobby view (never exposes the token)."""
@@ -89,6 +98,15 @@ class GameRoom:
         self.seed: Optional[int] = None
         self.host_seat: Optional[int] = None
 
+        # Every accepted action (human or bot), in order -- together with
+        # ``seed`` this *is* the replay (architecture 9). Populated once play
+        # starts; persisted alongside the final result when the game ends.
+        self.action_log: List[Action] = []
+        self.started_at: Optional[str] = None
+        self.ended_at: Optional[str] = None
+        # Guards against double-persisting the same finished game.
+        self.persisted: bool = False
+
         rotation = bot_rotation or ["degen", "conservative", "cashflow", "contrarian"]
         # Start every seat as a bot; humans claim seats from the top as they join.
         self.seats: List[Seat] = [
@@ -103,10 +121,15 @@ class GameRoom:
 
     # --- Lobby ----------------------------------------------------------
 
-    def add_human(self, session_id: str, name: str) -> Optional[tuple]:
+    def add_human(
+        self, session_id: str, name: str, player_key: Optional[str] = None
+    ) -> Optional[tuple]:
         """Claim the lowest open bot seat for a human. Returns ``(seat, token)``.
 
-        Returns ``None`` if the room is full of humans or no longer in the lobby.
+        ``player_key`` is an optional opaque client-supplied identity (e.g. from
+        ``localStorage``) used only to accrue cross-game stats in persistence;
+        leave it ``None`` for an anonymous guest. Returns ``None`` if the room is
+        full of humans or no longer in the lobby.
         """
         if self.phase != RoomPhase.LOBBY:
             return None
@@ -118,6 +141,7 @@ class GameRoom:
                 seat.session_id = session_id
                 seat.token = secrets.token_urlsafe(16)
                 seat.connected = True
+                seat.player_key = player_key
                 if self.host_seat is None:
                     self.host_seat = seat.index
                 return seat.index, seat.token
@@ -142,6 +166,7 @@ class GameRoom:
         self.seed = secrets.randbits(64)
         self.state = new_game(self.config, self.seed, roster)
         self.phase = RoomPhase.PLAYING
+        self.started_at = _now_iso()
         return None
 
     # --- Connection lifecycle ------------------------------------------
@@ -203,6 +228,7 @@ class GameRoom:
             return ActionOutcome(False, protocol.error(outcome.code, outcome.message))
 
         self.state = outcome
+        self.action_log.append(action)  # the seat-corrected action, not the raw payload
         events = [e.to_dict() for e in self.state.ledger[before:]]
         self._refresh_phase()
         return ActionOutcome(True, events=events)
@@ -233,10 +259,12 @@ class GameRoom:
         outcome = reduce(self.state, action)
         if isinstance(outcome, RuleError):
             # A policy proposed something illegal; fall back to ending the turn.
-            outcome = reduce(self.state, end_turn(seat.index))
+            action = end_turn(seat.index)
+            outcome = reduce(self.state, action)
             if isinstance(outcome, RuleError):
                 return None  # cannot progress this seat; let the caller stop
         self.state = outcome
+        self.action_log.append(action)
         events = [e.to_dict() for e in self.state.ledger[before:]]
         self._refresh_phase()
         return events
@@ -288,6 +316,26 @@ class GameRoom:
     def is_over(self) -> bool:
         return self.phase == RoomPhase.OVER
 
+    # --- Persistence handoff ---------------------------------------------
+
+    def player_keys(self) -> Dict[int, Optional[str]]:
+        """Seat index -> the opaque client identity bound to it (or ``None``)."""
+        return {s.index: s.player_key for s in self.seats}
+
+    def to_game_result(self) -> Optional[GameResult]:
+        """Package the finished game the same way headless simulation does.
+
+        Returns ``None`` unless the game has actually ended. Reuses
+        :func:`~monopoly.simulation.runner.summarize_game` so a live multiplayer
+        game and a headless backtest game produce the identical result shape --
+        one ingestion point for persistence either way.
+        """
+        if self.state is None or not self.state.is_over():
+            return None
+        return summarize_game(
+            self.state, self.seed, self.config, self.action_log, truncated=False
+        )
+
     # --- Internals ------------------------------------------------------
 
     def _seat_by_index(self, index: Optional[int]) -> Optional[Seat]:
@@ -301,4 +349,6 @@ class GameRoom:
 
     def _refresh_phase(self) -> None:
         if self.state is not None and self.state.is_over():
+            if self.phase != RoomPhase.OVER:
+                self.ended_at = _now_iso()
             self.phase = RoomPhase.OVER

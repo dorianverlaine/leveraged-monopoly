@@ -23,8 +23,10 @@ import json
 import uuid
 from typing import Dict, Optional
 
+from ..persistence import db as persistence_db
+from ..persistence.store import GameStore
 from .hub import GameHub, resolve_config
-from .room import GameRoom
+from .room import GameRoom, RoomPhase
 from . import protocol
 
 # Delay between successive bot moves, so a bot turn animates instead of flashing
@@ -42,10 +44,18 @@ class Connection:
 
 
 class RealtimeServer:
-    """Owns the hub, the connection table, and the broadcast machinery."""
+    """Owns the hub, the connection table, and the broadcast machinery.
 
-    def __init__(self) -> None:
+    ``store`` is an optional :class:`~monopoly.persistence.store.GameStore`. When
+    provided, every room's finished game is persisted exactly once (architecture
+    7.3, 9). Pass ``None`` (the default) to run with persistence disabled, e.g.
+    for tests or an embedded/ephemeral use of this class -- the CLI entry point
+    (``main``) wires up a real database by default.
+    """
+
+    def __init__(self, store: Optional[GameStore] = None) -> None:
         self.hub = GameHub()
+        self.store = store
         # session_id -> Connection (the socket registry the room deliberately
         # does not hold, so the room stays transport-agnostic).
         self.connections: Dict[str, Connection] = {}
@@ -102,7 +112,9 @@ class RealtimeServer:
     async def _create_room(self, conn: Connection, msg: dict) -> None:
         config = resolve_config(msg.get("preset", "quick"), int(msg.get("players", 4)))
         room = self.hub.create_room(config)
-        seat_token = room.add_human(conn.session_id, msg.get("name", "Host"))
+        seat_token = room.add_human(
+            conn.session_id, msg.get("name", "Host"), player_key=msg.get("player_key")
+        )
         if seat_token is None:  # should not happen on a fresh room
             await self._send(conn, protocol.error("room_full", "Room is full"))
             return
@@ -116,7 +128,9 @@ class RealtimeServer:
         if room is None:
             await self._send(conn, protocol.error("no_such_room", "Room not found"))
             return
-        seat_token = room.add_human(conn.session_id, msg.get("name", "Player"))
+        seat_token = room.add_human(
+            conn.session_id, msg.get("name", "Player"), player_key=msg.get("player_key")
+        )
         if seat_token is None:
             await self._send(conn, protocol.error("cannot_join", "Room is full or already started"))
             return
@@ -188,6 +202,30 @@ class RealtimeServer:
             conn = self.connections.get(seat.session_id)
             if conn is not None:
                 await self._send(conn, room.state_message_for(seat.index, events))
+        # Every state broadcast is a natural checkpoint to notice a just-finished
+        # game and persist it exactly once (see room.persisted).
+        self._maybe_persist(room)
+
+    def _maybe_persist(self, room: GameRoom) -> None:
+        """Persist a room's completed game the first time it is seen finished.
+
+        Synchronous and cheap (a couple of local SQLite inserts) so it is safe to
+        call from the broadcast path without awaiting; ``room.persisted`` makes
+        this idempotent even if called from multiple broadcast points.
+        """
+        if self.store is None or room.phase != RoomPhase.OVER or room.persisted:
+            return
+        result = room.to_game_result()
+        if result is None:
+            return
+        self.store.save_completed_game(
+            result,
+            room_code=room.code,
+            player_keys=room.player_keys(),
+            started_at=room.started_at,
+            ended_at=room.ended_at,
+        )
+        room.persisted = True
 
     async def _broadcast_lobby(self, room: GameRoom) -> None:
         message = room.lobby_message()
@@ -205,7 +243,7 @@ class RealtimeServer:
             pass
 
 
-async def _serve(host: str, port: int) -> None:
+async def _serve(host: str, port: int, store: Optional[GameStore]) -> None:
     # Lazy import so the optional dependency is only required to actually serve.
     try:
         import websockets
@@ -215,9 +253,11 @@ async def _serve(host: str, port: int) -> None:
             "Install it with:  pip install -e \".[realtime]\""
         ) from exc
 
-    server = RealtimeServer()
+    server = RealtimeServer(store=store)
     async with websockets.serve(server.handle, host, port):
         print(f"Leveraged Monopoly realtime server listening on ws://{host}:{port}")
+        if store is not None:
+            print("Game history is being recorded (see monopoly-history).")
         await asyncio.Future()  # run forever
 
 
@@ -225,9 +265,23 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Leveraged Monopoly WebSocket server.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--db",
+        default=None,
+        help=f"SQLite path for game history (default: {persistence_db.DEFAULT_DB_PATH})",
+    )
+    parser.add_argument(
+        "--no-persist", action="store_true", help="Disable game-history persistence entirely"
+    )
     args = parser.parse_args(argv)
+
+    store = None
+    if not args.no_persist:
+        conn = persistence_db.connect(args.db or persistence_db.DEFAULT_DB_PATH)
+        store = GameStore(conn)
+
     try:
-        asyncio.run(_serve(args.host, args.port))
+        asyncio.run(_serve(args.host, args.port, store))
     except KeyboardInterrupt:  # pragma: no cover
         print("\nShutting down.")
     return 0

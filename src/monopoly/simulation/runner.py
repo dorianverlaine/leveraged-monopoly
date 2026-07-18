@@ -136,22 +136,29 @@ def play_game(
         action_log.append(action)
         management_streak += 1
 
-    return _summarize(state, seed, config, action_log, truncated)
+    return summarize_game(state, seed, config, action_log, truncated)
 
 
-def _summarize(
+def summarize_game(
     state: GameState,
     seed: int,
     config: GameConfig,
     action_log: List[Action],
     truncated: bool,
 ) -> GameResult:
-    """Package the finished game into a serializable result."""
+    """Package a finished (or in-progress) game into a serializable result.
+
+    Public so callers other than ``play_game`` -- notably the live multiplayer
+    room in :mod:`monopoly.realtime.room` -- can build the exact same
+    ``GameResult`` shape when a real-time game ends, keeping headless
+    simulation, replay, and live-game persistence on one code path.
+    """
     win = winner(state)
     final_players = [
         {
             "id": p.id,
             "name": p.name,
+            "is_bot": p.is_bot,
             "policy": p.policy,
             "status": p.status,
             "net_worth": round(valuation.net_worth(state, p.id), 2),

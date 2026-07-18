@@ -11,9 +11,14 @@ claimed ``player_id`` -- it overrides it with the seat bound to that connection.
 
 Client -> Server
 ----------------
-* ``{"type": "create_room", "name": str, "preset": "quick|standard|long", "players": int}``
-* ``{"type": "join_room", "room": str, "name": str}``
+* ``{"type": "create_room", "name": str, "preset": "quick|standard|long", "players": int, "player_key": str?}``
+* ``{"type": "join_room", "room": str, "name": str, "player_key": str?}``
 * ``{"type": "reconnect", "room": str, "token": str}``
+
+``player_key`` is optional: an opaque identity the client generates and persists
+itself (e.g. in ``localStorage``), used only so completed-game stats can be
+attributed across games (architecture 9). It is never a credential and never
+validated as one -- omit it to play as an anonymous guest.
 * ``{"type": "start"}``                              (host only)
 * ``{"type": "action", "action": {"type": ..., ...}}``  (player_id is ignored/overridden)
 
