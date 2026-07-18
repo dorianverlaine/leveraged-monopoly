@@ -2,8 +2,8 @@
 
 All frames are JSON text. This module is the single source of truth for message
 shapes so the frontend, the server, and any tests agree. It has no dependency on
-the transport (``websockets``) or on asyncio, so it can be reused unchanged if the
-room is later re-hosted inside a Cloudflare Durable Object.
+the transport (``websockets``) or on asyncio, so the same contract holds however
+the server is hosted.
 
 Design (architecture 1 & 6.2): clients are dumb. They send *intent* and receive
 the full authoritative state to re-render. The server never trusts a client's

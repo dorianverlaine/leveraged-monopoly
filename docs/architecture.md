@@ -2,6 +2,17 @@
 
 *A real-time, online multiplayer board game (max 6 players) with modern capital-market mechanics: leverage, margin calls, systemic shocks, securitization, and inflation.*
 
+> **⚠️ v0.1 — partially superseded.** This is the original design document. The
+> project has since decided to stay **Python everywhere** and **not** freeze the
+> engine into Rust → WASM. As a result the "engine runs inside Cloudflare Durable
+> Objects at the edge" model here is **not** the plan: the authoritative rooms run
+> as a Python process on **AWS**, and Cloudflare is the edge layer only (Pages,
+> DNS/TLS, WebSocket proxy, WAF). See
+> [ADR 0001](decisions/0001-python-only-no-rust.md) for the decision and its
+> consequences. Everything else in this document (the determinism dividend, the
+> mechanics, the server-authoritative model, the phased "make it fun first"
+> approach) still holds.
+
 ---
 
 ## 0. TL;DR

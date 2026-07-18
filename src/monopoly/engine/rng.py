@@ -4,12 +4,13 @@ The whole engine is pure-functional: ``reduce(state, action) -> new_state`` with
 no ambient randomness. Every random draw comes from an :class:`SeededRng` that
 lives *inside* ``GameState``. This buys us determinism ("same seed -> same
 game"), trivial replays (``seed + action_log``), and portability: the algorithm
-below (SplitMix64) is trivially reproducible in Rust/WASM later, so the future
-native engine can reproduce the exact same sequences.
+below (SplitMix64) is simple and fully specified, so any process or machine
+running this engine reproduces the exact same sequences.
 
-Do NOT use Python's ``random`` module here -- its internal state is large and not
-guaranteed to be portable across language runtimes. SplitMix64 is a single
-64-bit word of state, which is easy to serialize and to re-implement anywhere.
+Do NOT use Python's ``random`` module here -- its Mersenne-Twister state is large
+and awkward to serialize. SplitMix64 is a single 64-bit word of state, trivial to
+serialize (it *is* the state) and to reproduce on any platform, which keeps the
+"same seed -> same game" guarantee robust across processes and machines.
 """
 
 from __future__ import annotations

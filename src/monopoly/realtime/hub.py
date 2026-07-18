@@ -1,9 +1,10 @@
-"""The matchmaker / room registry -- the stateless-ish edge entrypoint.
+"""The matchmaker / room registry.
 
-Mirrors the Cloudflare Worker's job (architecture 7.1): resolve a room code to a
-room, create rooms, and route joins. It holds the in-memory map of active rooms;
-in the cloud design this map is KV (room code -> Durable Object id), but the API
-shape is the same so the swap is mechanical.
+Resolve a room code to a room, create rooms, and route joins. It holds the
+in-memory map of active rooms for one server instance. When the server is scaled
+across instances, this same ``code -> room`` lookup becomes a shared router
+(``room code -> owning instance``) so a room always resolves to the process that
+holds its authoritative state -- see docs/decisions/0001-python-only-no-rust.md.
 """
 
 from __future__ import annotations

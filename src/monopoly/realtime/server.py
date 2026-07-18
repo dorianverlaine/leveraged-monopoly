@@ -3,8 +3,9 @@
 This is the only module that touches asyncio and the ``websockets`` library. It
 maps connections to opaque session ids, forwards parsed frames to the hub/room,
 and fans authoritative state broadcasts back out. All game logic lives in
-:mod:`monopoly.realtime.room`; keeping the network shell this thin is what makes
-the room portable to a Cloudflare Durable Object later.
+:mod:`monopoly.realtime.room`; keeping the network shell this thin keeps the room
+transport-agnostic and lets the whole server run as a long-lived Python process
+(on AWS, in the deployment plan).
 
 Run it::
 

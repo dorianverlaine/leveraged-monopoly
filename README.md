@@ -27,10 +27,12 @@ reduce(state, action) -> new_state | RuleError
   game), anti-cheat by construction (clients hold no authority), and a backtest
   that is just the engine run in a loop.
 
-The Python implementation here is the **P0/P1 stage**: prove the mechanics are
-fun and correct in a language we can iterate on hourly. Once the rules stop
-changing, the same engine is intended to be re-frozen into Rust → WASM (edge) and
-native + PyO3 (AWS backtest), exactly as the architecture document stages it.
+The engine is **Python everywhere** — one implementation, one language, for the
+live server, replays, and the backtest alike. (The original architecture staged a
+later rewrite into Rust → WASM; we have decided against it — see
+[ADR 0001](docs/decisions/0001-python-only-no-rust.md). A turn-based game and a
+horizontally-scalable, deterministic backtest don't need native speed, and one
+language is far simpler to iterate on.)
 
 ---
 
@@ -42,7 +44,7 @@ persistence/transport layer can be swapped without touching the kernel.
 ```
 src/monopoly/
 ├── engine/                # The deterministic kernel — the heart of the system
-│   ├── rng.py             # SplitMix64 seeded PRNG (portable to Rust later)
+│   ├── rng.py             # SplitMix64 seeded PRNG (deterministic, portable)
 │   ├── state.py           # GameState, GameConfig, TurnState, Transaction, new_game()
 │   ├── board.py           # Tile / ring generation (24 / 36 / 44), fractional ownership
 │   ├── player.py          # Player + lifecycle status
@@ -165,8 +167,10 @@ A WebSocket server wraps the engine in **authoritative rooms** — one room owns
 `GameState`, mutated only through `reduce`. The room logic
 ([`realtime/room.py`](src/monopoly/realtime/room.py)) is transport-agnostic and
 unit-tested; the [`websockets`](https://pypi.org/project/websockets/) adapter
-([`realtime/server.py`](src/monopoly/realtime/server.py)) is a thin shell, so the
-same room can later be lifted into a Cloudflare Durable Object.
+([`realtime/server.py`](src/monopoly/realtime/server.py)) is a thin shell. Each
+room is a single-threaded, in-memory authoritative object, so the server runs as
+a long-lived Python process on AWS and scales out by pinning each room to its
+owning instance (see [ADR 0001](docs/decisions/0001-python-only-no-rust.md)).
 
 ```bash
 pip install -e ".[realtime]"
@@ -283,15 +287,19 @@ its `locale`. The full contract and a starter glossary are in
 - **Done (P1 transport):** authoritative rooms behind a WebSocket server
   (join-by-code, bots, reconnection, anti-cheat).
 - **Done (P1 persistence):** completed-game records, replays, and match history
-  in SQLite (the local stand-in for D1); `monopoly-history` CLI.
+  in SQLite (Postgres for scale); `monopoly-history` CLI.
 - **Done (P1 accounts):** passwordless identity, sessions, and progression
   (XP / levels / Elo / streaks); 4-language i18n contract for the frontend.
 - **Next:** a thin, multilingual React client (Duolingo / chess.com styling)
   against the `realtime/protocol.py` + `docs/i18n.md` contracts.
-- **Later (P2):** freeze the proven rules into a Rust kernel (WASM at the edge,
-  native + PyO3 for the AWS Monte-Carlo backtest cluster); RL bots.
+- **Then:** deploy — Python game server on **AWS**, frontend on **Cloudflare
+  Pages**, Cloudflare as the edge (DNS / TLS / WebSocket proxy / WAF). Scale out by
+  sharding rooms across instances. RL bots.
 
-See [`docs/architecture.md`](docs/architecture.md) for the full system design.
+The engine stays **Python everywhere** — no Rust rewrite; see
+[ADR 0001](docs/decisions/0001-python-only-no-rust.md). The original design
+document is [`docs/architecture.md`](docs/architecture.md) (v0.1; its Rust / Durable
+Object staging is superseded by ADR 0001).
 
 ## License
 

@@ -1,11 +1,13 @@
 """The authoritative game room -- transport-agnostic.
 
-This is the server-side analogue of a Cloudflare Durable Object (architecture
-7.2): one room owns exactly one authoritative ``GameState`` and is the single
-place it may be mutated (only ever through ``reduce``). It deliberately knows
-nothing about WebSockets or asyncio -- it takes opaque ``session_id`` strings and
-returns plain dicts -- so the same class can be driven by the local
-``websockets`` server here or lifted into a Durable Object unchanged.
+One room owns exactly one authoritative ``GameState`` and is the single place it
+may be mutated (only ever through ``reduce``): a single-threaded, in-memory
+authoritative object, which is what makes race conditions structurally
+impossible. It deliberately knows nothing about WebSockets or asyncio -- it takes
+opaque ``session_id`` strings and returns plain dicts -- so the same class can be
+driven by the ``websockets`` server here, exercised directly in tests, or run in
+any other Python host. At scale, each room is pinned to one server instance (see
+docs/decisions/0001-python-only-no-rust.md).
 
 Responsibilities:
 * lobby: seat assignment, human/bot backfill, reconnection tokens;
