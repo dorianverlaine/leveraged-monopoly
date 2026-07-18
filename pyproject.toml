@@ -22,11 +22,16 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+# The realtime WebSocket server needs a transport library; the engine itself
+# stays dependency-free.
+realtime = ["websockets>=12.0"]
+dev = ["pytest>=7.0", "websockets>=12.0"]
 
 [project.scripts]
 # Play a headless demo game from the terminal: `monopoly-demo`.
 monopoly-demo = "monopoly.cli:main"
+# Run the realtime WebSocket server: `monopoly-server`.
+monopoly-server = "monopoly.realtime.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

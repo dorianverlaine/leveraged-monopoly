@@ -195,6 +195,19 @@ class GameState:
             "ledger": [t.to_dict() for t in self.ledger],
         }
 
+    def to_public_dict(self) -> dict:
+        """Serialize for sending to clients -- the same as :meth:`to_dict` but
+        with the RNG internal state removed.
+
+        The seeded PRNG state fully determines every future dice roll and shock.
+        Broadcasting it would let a client predict the future and cheat, so it is
+        stripped from anything that crosses to the client. Persistence and replay
+        use :meth:`to_dict` (which keeps the RNG) instead.
+        """
+        data = self.to_dict()
+        data.pop("rng", None)
+        return data
+
 
 # --- Factory ---------------------------------------------------------------
 

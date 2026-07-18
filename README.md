@@ -142,6 +142,40 @@ else:
     state = result                 # success returns a brand-new state
 ```
 
+### Real-time multiplayer server (P1)
+
+A WebSocket server wraps the engine in **authoritative rooms** — one room owns one
+`GameState`, mutated only through `reduce`. The room logic
+([`realtime/room.py`](src/monopoly/realtime/room.py)) is transport-agnostic and
+unit-tested; the [`websockets`](https://pypi.org/project/websockets/) adapter
+([`realtime/server.py`](src/monopoly/realtime/server.py)) is a thin shell, so the
+same room can later be lifted into a Cloudflare Durable Object.
+
+```bash
+pip install -e ".[realtime]"
+monopoly-server --host 127.0.0.1 --port 8765
+```
+
+The full wire protocol (the contract for any frontend) lives in
+[`realtime/protocol.py`](src/monopoly/realtime/protocol.py). In short — all frames
+are JSON:
+
+| Client → Server | Server → Client |
+|-----------------|-----------------|
+| `create_room` · `join_room` · `reconnect` · `start` · `action` | `room_created` · `joined` · `lobby` · `state` · `error` |
+
+Key properties:
+
+- **Dumb clients.** Each accepted action broadcasts the full public state; clients
+  re-render, never compute rules.
+- **Anti-cheat by seat binding.** The server ignores a client's claimed
+  `player_id` and uses the seat bound to its connection.
+- **No RNG leak.** Clients receive `to_public_dict()` — the seeded PRNG state is
+  stripped so the future can't be predicted.
+- **Bots + reconnection.** Empty seats and disconnected humans are bot-driven so a
+  game never stalls; reconnect with your token to resync the full state.
+- **Join by code.** 4-character room codes from an unambiguous alphabet.
+
 ---
 
 ## Design principles
@@ -160,10 +194,12 @@ else:
 
 ## Roadmap
 
-- **Now (this repo, P0/P1):** deterministic engine, bots, headless simulation +
-  backtest. Prove the collapse is satisfying.
-- **Next (P1 online):** move `reduce` behind a real-time transport (per-room
-  authority + WebSocket) and add persistence + replays.
+- **Done (P0):** deterministic engine, bots, headless simulation + backtest.
+- **Done (P1 transport):** authoritative rooms behind a WebSocket server
+  (join-by-code, bots, reconnection, anti-cheat).
+- **Next (P1 persistence):** accounts, completed-game records, and replay storage
+  (D1/KV/R2 in the cloud design; SQLite/Postgres works locally). Then a thin
+  React client against the protocol above.
 - **Later (P2):** freeze the proven rules into a Rust kernel (WASM at the edge,
   native + PyO3 for the AWS Monte-Carlo backtest cluster); RL bots.
 
