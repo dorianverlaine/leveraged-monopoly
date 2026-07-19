@@ -200,3 +200,88 @@ button { font-family: inherit; cursor: pointer; }
   to { transform: translateY(0); opacity: 1; }
 }
 .rise { animation: rise 0.4s ease both; }
+
+/* =========================================================================
+   Profile card — the Duolingo level / XP / streak trio
+   ========================================================================= */
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: var(--bg-soft);
+  border: 2px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+}
+.profile__avatar {
+  font-size: 34px;
+  line-height: 1;
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  width: 54px; height: 54px;
+  display: grid; place-items: center;
+  flex: 0 0 auto;
+}
+.profile__body { flex: 1; min-width: 0; }
+.profile__top { display: flex; align-items: baseline; gap: 8px; }
+.profile__name { font-weight: 900; font-size: 16px; }
+.profile__lvl { font-size: 12px; font-weight: 900; color: var(--gold-dark); }
+.profile__stats { display: flex; gap: 10px; font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.profile__xp { margin-top: 6px; }
+
+/* =========================================================================
+   Lobby
+   ========================================================================= */
+.roomcode {
+  background: linear-gradient(180deg, #fff7d6, #ffeead);
+  border: 2px solid var(--gold);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 4px 0 var(--gold-dark);
+}
+.roomcode__label { font-size: 12px; font-weight: 900; color: #8a6d00; text-transform: uppercase; letter-spacing: 1px; }
+.roomcode__value {
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  color: #6b5400;
+  margin: 4px 0 2px;
+  text-indent: 8px; /* balance the trailing letter-spacing */
+}
+.roomcode__hint { font-size: 12px; color: #8a6d00; font-weight: 700; }
+
+.seats { display: flex; flex-direction: column; gap: 8px; }
+.seat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.seat--you { border-color: var(--green); box-shadow: 0 3px 0 var(--green-dark); }
+.seat--empty {
+  border-style: dashed;
+  background: var(--bg-soft);
+  color: var(--ink-faint);
+  justify-content: center;
+  font-weight: 800;
+}
+.seat__avatar { font-size: 24px; line-height: 1; }
+.seat__name { font-weight: 800; flex: 1; }
+.badge {
+  font-size: 11px;
+  font-weight: 900;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--bg-soft);
+  border: 2px solid var(--line);
+  color: var(--ink-soft);
+}
+.badge--host { background: #fff7d6; border-color: var(--gold); color: #8a6d00; }
+.badge--you { background: #eefbe2; border-color: var(--green); color: var(--green-dark); }
+.badge--bot { background: #f3f0ff; border-color: var(--purple); color: var(--purple-dark); }

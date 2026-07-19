@@ -3,7 +3,7 @@
 
 import { ReactNode } from "react";
 import { useI18n, LOCALES, Locale } from "./i18n";
-import type { GameState, LedgerEntry, Player, Tile } from "./types";
+import type { AccountProfile, GameState, LedgerEntry, Player, Tile } from "./types";
 import { AVATARS } from "./mock";
 
 /* ---------------------------------------------------------------- buttons */
@@ -55,6 +55,38 @@ export function LanguagePicker() {
           <span style={{ fontSize: 16 }}>{l.flag}</span> {l.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- profile */
+
+/** Level + XP bar + streak: the Duolingo progress trio. */
+export function ProfileCard({ account }: { account: AccountProfile }) {
+  const { t } = useI18n();
+  const pct = account.xp_for_next_level
+    ? Math.round((account.xp_into_level / account.xp_for_next_level) * 100)
+    : 0;
+  return (
+    <div className="profile">
+      <div className="profile__avatar">{account.avatar || "🦈"}</div>
+      <div className="profile__body">
+        <div className="profile__top">
+          <span className="profile__name">{account.display_name}</span>
+          <span className="profile__lvl">⭐ {t("profile.level")} {account.level}</span>
+        </div>
+        <div className="profile__stats">
+          <span>🏆 {account.rating}</span>
+          <span>🔥 {account.current_win_streak}</span>
+          <span>🎮 {account.games_won}/{account.games_played}</span>
+        </div>
+        <div className="meter profile__xp" style={{ height: 12 }}>
+          <div
+            className="meter__fill"
+            style={{ width: `${pct}%`, background: "var(--gold)" }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

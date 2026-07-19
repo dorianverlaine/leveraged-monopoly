@@ -1,7 +1,7 @@
 // A realistic mock game state so the UI can be developed, demoed and screenshotted
 // without a running server. Mirrors what the backend's 24-tile board produces.
 
-import type { GameState, StateMessage, Tile } from "./types";
+import type { AccountProfile, GameState, StateMessage, Tile } from "./types";
 
 const HK = ["Sham Shui Po", "Mong Kok", "Yau Ma Tei", "Tsim Sha Tsui", "North Point", "Wan Chai"];
 const PARIS = ["Belleville", "Menilmontant", "Bastille", "Le Marais", "Montmartre", "Opera"];
@@ -108,3 +108,47 @@ export function mockState(): StateMessage {
 }
 
 export const AVATARS = ["🦈", "😈", "🐙", "🦊", "🐼", "🦁"];
+
+/** A mock signed-in profile (mirrors the backend account's public_profile). */
+export function mockAccount(): AccountProfile {
+  return {
+    id: "demo",
+    display_name: "You",
+    avatar: "🦈",
+    locale: "zh-Hant",
+    level: 7,
+    xp: 2340,
+    xp_into_level: 140,
+    xp_for_next_level: 700,
+    rating: 1180,
+    games_played: 23,
+    games_won: 9,
+    current_win_streak: 3,
+    best_win_streak: 5,
+  };
+}
+
+export interface LobbySeat {
+  seat: number;
+  name: string;
+  is_bot: boolean;
+  connected: boolean;
+  empty?: boolean;
+}
+
+/** A mock lobby: you (host), a friend, two bots and two open seats. */
+export function mockLobby(): { code: string; host: number; you: number; seats: LobbySeat[] } {
+  return {
+    code: "DT8P",
+    host: 0,
+    you: 0,
+    seats: [
+      { seat: 0, name: "You", is_bot: false, connected: true },
+      { seat: 1, name: "Mireille", is_bot: false, connected: true },
+      { seat: 2, name: "Bot-shark", is_bot: true, connected: true },
+      { seat: 3, name: "Bot-degen", is_bot: true, connected: true },
+      { seat: 4, name: "", is_bot: false, connected: false, empty: true },
+      { seat: 5, name: "", is_bot: false, connected: false, empty: true },
+    ],
+  };
+}
