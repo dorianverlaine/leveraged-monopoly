@@ -12,6 +12,7 @@ from .conservative import ConservativePolicy
 from .contrarian import ContrarianPolicy
 from .degen import DegenPolicy
 from .policy import Policy
+from .shark import SharkPolicy
 from .registry import available_policies, make_policy, register_policy
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "DegenPolicy",
     "CashflowPolicy",
     "ContrarianPolicy",
+    "SharkPolicy",
     "available_policies",
     "make_policy",
     "register_policy",

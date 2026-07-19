@@ -16,11 +16,12 @@ phase.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from ..engine import valuation
 from ..engine.actions import Action, end_turn, roll_dice
 from ..engine.board import Tile
-from ..engine.state import GamePhase, GameState
+from ..engine.state import GamePhase, GameState, TradeOffer
 
 
 class Policy(ABC):
@@ -46,6 +47,23 @@ class Policy(ABC):
     def manage(self, state: GameState, player_id: int) -> Action:
         """Return one financial-management action, or ``end_turn`` to pass."""
         raise NotImplementedError
+
+    def respond_to_trade(
+        self, state: GameState, player_id: int, offer: TradeOffer
+    ) -> Optional[bool]:
+        """Decide how to answer a trade offer addressed to this player.
+
+        ``True`` accepts, ``False`` rejects, ``None`` leaves it pending. Called
+        by the simulation runner for any offer whose recipient is ``player_id``
+        (trading is not turn-gated). The default is a plain fair-value check:
+        accept only if the value received is at least the value given. A smart
+        policy overrides this to also weigh what a tile does to a *monopoly*
+        (worth overpaying to complete one, worth refusing to hand one to a
+        rival).
+        """
+        received = trade_value(state, offer.offer_cash, offer.offer_tiles)
+        given = trade_value(state, offer.request_cash, offer.request_tiles)
+        return received >= given
 
 
 # --- Shared decision helpers ----------------------------------------------
@@ -109,3 +127,28 @@ def margin_headroom(state: GameState, player_id: int) -> float:
     """
     ratio = valuation.margin_ratio(state, player_id)
     return ratio - state.config.maintenance_ratio
+
+
+def trade_value(state: GameState, cash: int, tiles: dict) -> float:
+    """Plain market value of one side of a trade: cash plus tile shares at value."""
+    total = float(cash or 0)
+    for tile_index, share in (tiles or {}).items():
+        total += share * valuation.property_value(state, tile_index)
+    return total
+
+
+def city_progress(state: GameState, player_id: int, group: str):
+    """Return ``(owned, total)`` landmark counts for a player in one city."""
+    tiles = [t for t in state.board if t.is_property() and t.group == group]
+    owned = sum(1 for t in tiles if t.sole_owner() == player_id)
+    return owned, len(tiles)
+
+
+def shock_is_imminent(state: GameState) -> bool:
+    """True if a systemic shock fires at the very next round boundary.
+
+    The shock clock is public state, so a shrewd policy can de-risk *before* the
+    crash instead of being margin-called by it -- the single sharpest edge a bot
+    has over a naive one.
+    """
+    return state.market.shock_clock <= 1

@@ -107,6 +107,10 @@ def play_game(
             truncated = True
             break
 
+        # Trading is not turn-gated: let recipients answer pending offers before
+        # the active player acts (mirrors how the real-time server behaves).
+        state = _resolve_pending_trades(state, policy_map, action_log)
+
         active = state.active_player()
 
         # Reset the per-turn streak counter whenever the active seat changes.
@@ -137,6 +141,42 @@ def play_game(
         management_streak += 1
 
     return summarize_game(state, seed, config, action_log, truncated)
+
+
+def _resolve_pending_trades(
+    state: GameState, policy_map: Dict[int, Policy], action_log: List[Action]
+) -> GameState:
+    """Ask each pending offer's recipient to respond, applying their decision.
+
+    Deterministic (offers processed in list order). A recipient that leaves an
+    offer pending (``None``) simply keeps it for a future step; anything that
+    resolves an offer is logged so the replay stays exact. Bounded: every
+    accept/reject removes one offer, and ``None`` breaks the loop.
+    """
+    from ..engine.actions import accept_trade, reject_trade
+
+    progressed = True
+    while progressed and state.trades:
+        progressed = False
+        for offer in list(state.trades):
+            recipient = offer.recipient_id
+            decision = policy_map[recipient].respond_to_trade(state, recipient, offer)
+            if decision is None:
+                continue
+            action = accept_trade(recipient, offer.id) if decision else reject_trade(recipient, offer.id)
+            outcome = reduce(state, action)
+            if isinstance(outcome, RuleError):
+                # A stale/illegal accept -> clear the offer with a reject instead.
+                outcome = reduce(state, reject_trade(recipient, offer.id))
+                if isinstance(outcome, RuleError):
+                    state.trades.remove(offer)  # defensive: never spin on a bad offer
+                    continue
+                action = reject_trade(recipient, offer.id)
+            state = outcome
+            action_log.append(action)
+            progressed = True
+
+    return state
 
 
 def summarize_game(

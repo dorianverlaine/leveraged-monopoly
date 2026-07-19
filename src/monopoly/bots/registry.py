@@ -15,6 +15,7 @@ from .conservative import ConservativePolicy
 from .contrarian import ContrarianPolicy
 from .degen import DegenPolicy
 from .policy import Policy
+from .shark import SharkPolicy
 
 # name -> policy class
 _REGISTRY: Dict[str, Type[Policy]] = {
@@ -22,6 +23,7 @@ _REGISTRY: Dict[str, Type[Policy]] = {
     DegenPolicy.name: DegenPolicy,
     CashflowPolicy.name: CashflowPolicy,
     ContrarianPolicy.name: ContrarianPolicy,
+    SharkPolicy.name: SharkPolicy,
 }
 
 

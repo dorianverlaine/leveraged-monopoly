@@ -6,15 +6,23 @@ just convenient bundles of :class:`GameConfig` values -- "quick / standard / lon
 at 2 a.m. (architecture 4.6).
 
 **Balance note.** These values were tuned empirically with the backtest, not by
-intuition (architecture 5.2). The key finding: starting cash must be *low
-relative to property prices*, or players never need to borrow -- and with no
-debt, systemic shocks and margin calls never fire, so the game degenerates into
-plain Monopoly. The tuned starting cash forces players to leverage, which is what
-makes the capital-market layer (and its one-second collapses) actually happen.
-Across the default bots the capital layer now fires in ~80-100% of games, with
-bankruptcies a regular occurrence. See ``analysis/sweep.py`` to re-tune, and note
-that bot *win-rate* balance is limited by bot quality (the cautious cash-hoarder
-structurally survives harsh shocks), not by these parameters.
+intuition (architecture 5.2). Two findings drove them:
+
+1. *Starting cash must be low relative to property prices*, or players never need
+   to borrow -- and with no debt, systemic shocks and margin calls never fire, so
+   the game degenerates into plain Monopoly.
+2. *Inflation must roughly recover a shock between shocks* -- i.e. ``(1+inflation)
+   ** shock_interval ~= 1/(1-shock_magnitude)``. If it doesn't, shock damage
+   compounds far faster than assets appreciate, so holding cash beats holding
+   property, hoarding wins, and the capital-market layer becomes a trap that
+   optimal play avoids (the *opposite* of the architecture's "asset-holders win
+   lying down" thesis, 4.4). With recovery tuned in, each shock is still a sharp
+   -30% jolt (drama preserved) but buying / leverage / monopolies pay off.
+
+Together these make skilled aggression beat passivity: the ``shark`` bot (which
+leverages between shocks and de-risks right before them) is the strongest policy,
+while the ``degen`` (which stays levered into shocks) still dies. See
+``analysis/sweep.py`` to re-tune.
 """
 
 from __future__ import annotations
@@ -26,7 +34,7 @@ from ..engine.player import Player
 from ..engine.state import GameConfig, VictoryCondition
 
 # Default rotation used to backfill empty seats with varied opponents.
-_DEFAULT_BOT_ROTATION = ["degen", "conservative", "cashflow", "contrarian"]
+_DEFAULT_BOT_ROTATION = ["shark", "degen", "conservative", "cashflow", "contrarian"]
 
 
 def quick_match(max_players: int = 4) -> GameConfig:
@@ -37,7 +45,7 @@ def quick_match(max_players: int = 4) -> GameConfig:
         victory_condition=VictoryCondition.ROUND_LIMIT,
         round_limit=20,
         starting_cash=250,
-        inflation_rate=0.03,
+        inflation_rate=0.08,
         shock_interval_rounds=4,
         shock_magnitude=0.35,
         maintenance_ratio=1.40,
@@ -54,7 +62,7 @@ def standard_match(max_players: int = 6) -> GameConfig:
         victory_condition=VictoryCondition.LAST_SOLVENT,
         round_limit=45,
         starting_cash=450,
-        inflation_rate=0.02,
+        inflation_rate=0.05,
         shock_interval_rounds=6,
         shock_magnitude=0.30,
         maintenance_ratio=1.40,
@@ -71,7 +79,7 @@ def long_match(max_players: int = 6) -> GameConfig:
         victory_condition=VictoryCondition.LAST_SOLVENT,
         round_limit=80,
         starting_cash=800,
-        inflation_rate=0.015,
+        inflation_rate=0.035,
         shock_interval_rounds=9,
         shock_magnitude=0.28,
         maintenance_ratio=1.35,

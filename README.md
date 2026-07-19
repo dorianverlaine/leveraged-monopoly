@@ -63,12 +63,13 @@ src/monopoly/
 │       ├── margin.py           #   margin calls, forced liquidation, bankruptcy
 │       ├── inflation.py        #   per-round price growth + interest accrual
 │       └── shock.py            #   correlated systemic price shocks
-├── bots/                  # Policy interface + 4 hand-authored strategies
-│   ├── policy.py          #   decide(state, player_id) -> Action  (+ helpers)
+├── bots/                  # Policy interface + hand-authored strategies
+│   ├── policy.py          #   decide(state, player_id) -> Action, respond_to_trade
 │   ├── conservative.py    #   low leverage, hoards cash
 │   ├── degen.py           #   max leverage, first to die or dominate
 │   ├── cashflow.py        #   rent yield + securitization income
 │   ├── contrarian.py      #   buys into the crash
+│   ├── shark.py           #   the smart one: times shocks, completes monopolies
 │   └── registry.py        #   name -> policy lookup (drop-in agents)
 ├── config/                # Pacing presets (quick/standard/long) + roster builder
 ├── simulation/            # Headless game loop, replay, Monte-Carlo backtest
@@ -328,8 +329,15 @@ its `locale`. The full contract and a starter glossary are in
   in SQLite (Postgres for scale); `monopoly-history` CLI.
 - **Done (P1 accounts):** passwordless identity, sessions, and progression
   (XP / levels / Elo / streaks); 4-language i18n contract for the frontend.
-- **Next:** a thin, multilingual React client (Duolingo / chess.com styling)
-  against the `realtime/protocol.py` + `docs/i18n.md` contracts.
+- **Done (balance + smart bot):** presets tuned so the capital-market layer
+  actually fires and assets appreciate between shocks (so aggression pays,
+  restoring the "asset-holders win" thesis). Added the **`shark`** bot — it times
+  the public shock clock (levers up between shocks, de-risks right before) and
+  completes monopolies by trade; it is the strongest policy, while the reckless
+  `degen` still dies. Simulation runner now resolves trades (not turn-gated).
+- **Next:** a thin, multilingual React client (Duolingo / chess.com styling,
+  emoji-forward — see [`docs/frontend.md`](docs/frontend.md)) against the
+  `realtime/protocol.py` + `docs/i18n.md` contracts.
 - **Then:** deploy — Python game server on **AWS**, frontend on **Cloudflare
   Pages**, Cloudflare as the edge (DNS / TLS / WebSocket proxy / WAF). Scale out by
   sharding rooms across instances. RL bots.
