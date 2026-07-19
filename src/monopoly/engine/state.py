@@ -135,6 +135,41 @@ class Transaction:
 
 
 @dataclass
+class TradeOffer:
+    """A pending player-to-player trade proposal.
+
+    Trading is deliberately *not* turn-gated (unlike every other action): real
+    trade talk happens anytime, not just on your turn. ``id`` is a small integer
+    from ``GameState.next_trade_id`` -- a deterministic monotonic counter, never
+    a random UUID. This matters for replay: a later ``ACCEPT_TRADE`` action in
+    the log references this id, and replay must re-derive the *same* id when it
+    re-runs the ``PROPOSE_TRADE`` action, or the accept would fail to find its
+    trade on replay.
+    """
+
+    id: int
+    proposer_id: int
+    recipient_id: int
+    offer_cash: int
+    offer_tiles: Dict[int, float]      # tile_index -> share offered
+    request_cash: int
+    request_tiles: Dict[int, float]    # tile_index -> share requested
+    created_round: int
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "proposer_id": self.proposer_id,
+            "recipient_id": self.recipient_id,
+            "offer_cash": self.offer_cash,
+            "offer_tiles": {str(k): v for k, v in self.offer_tiles.items()},
+            "request_cash": self.request_cash,
+            "request_tiles": {str(k): v for k, v in self.request_tiles.items()},
+            "created_round": self.created_round,
+        }
+
+
+@dataclass
 class GameState:
     """The complete, serializable game world.
 
@@ -150,6 +185,8 @@ class GameState:
     players: List[Player]
     market: Market
     ledger: List[Transaction] = field(default_factory=list)
+    trades: List[TradeOffer] = field(default_factory=list)
+    next_trade_id: int = 0  # deterministic counter; see TradeOffer.id
 
     # --- Convenience accessors ------------------------------------------
     def active_player(self) -> Player:
@@ -199,6 +236,7 @@ class GameState:
             "players": players_out,
             "market": self.market.to_dict(),
             "ledger": [t.to_dict() for t in self.ledger],
+            "trades": [t.to_dict() for t in self.trades],
         }
 
     def to_public_dict(self) -> dict:

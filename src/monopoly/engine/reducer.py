@@ -34,6 +34,7 @@ from .mechanics import (
     movement,
     securitization,
     shock,
+    trade,
     trading,
 )
 
@@ -72,6 +73,10 @@ def _dispatch(state: GameState, action: Action) -> Union[None, RuleError]:
         ActionType.SECURITIZE: _handle_securitize,
         ActionType.BUILD: _handle_build,
         ActionType.SELL_BUILDING: _handle_sell_building,
+        ActionType.PROPOSE_TRADE: _handle_propose_trade,
+        ActionType.ACCEPT_TRADE: _handle_accept_trade,
+        ActionType.REJECT_TRADE: _handle_reject_trade,
+        ActionType.CANCEL_TRADE: _handle_cancel_trade,
         ActionType.END_TURN: _handle_end_turn,
         ActionType.CONCEDE: _handle_concede,
     }
@@ -107,6 +112,17 @@ def _guard_management(state: GameState, action: Action) -> Union[None, RuleError
     """Common guard for financial-management actions (your turn, action phase)."""
     err = _require_turn(state, action) or _require_phase(state, GamePhase.AWAIT_ACTION)
     return err
+
+
+def _guard_in_play(state: GameState, action: Action) -> Union[None, RuleError]:
+    """Guard for trade actions: sender must be a real, non-bankrupt player --
+    but, deliberately, NOT that it is their turn. Trading happens anytime."""
+    player = state.player_by_id(action.player_id)
+    if player is None:
+        return RuleError(RuleErrorCode.INVALID_TARGET, "Unknown player")
+    if player.status == PlayerStatus.BANKRUPT:
+        return RuleError(RuleErrorCode.PLAYER_BANKRUPT, "You are bankrupt")
+    return None
 
 
 # --- Action handlers -------------------------------------------------------
@@ -218,6 +234,50 @@ def _handle_sell_building(state: GameState, action: Action) -> Union[None, RuleE
         return result
     margin.enforce_solvency(state)
     return None
+
+
+def _handle_propose_trade(state: GameState, action: Action) -> Union[None, RuleError]:
+    err = _guard_in_play(state, action)
+    if err is not None:
+        return err
+    if action.target_player_id is None:
+        return RuleError(RuleErrorCode.INVALID_TARGET, "Must specify a target_player_id")
+    return trade.propose(
+        state,
+        action.player_id,
+        action.target_player_id,
+        action.offer_cash or 0,
+        action.offer_tiles or {},
+        action.request_cash or 0,
+        action.request_tiles or {},
+    )
+
+
+def _handle_accept_trade(state: GameState, action: Action) -> Union[None, RuleError]:
+    err = _guard_in_play(state, action)
+    if err is not None:
+        return err
+    result = trade.accept(state, action.player_id, action.trade_id)
+    if result is not None:
+        return result
+    # A trade can move collateral either direction, so re-check solvency for
+    # whoever ends up under-margined (see mechanics/trade.py's module docstring).
+    margin.enforce_solvency(state)
+    return None
+
+
+def _handle_reject_trade(state: GameState, action: Action) -> Union[None, RuleError]:
+    err = _guard_in_play(state, action)
+    if err is not None:
+        return err
+    return trade.reject(state, action.player_id, action.trade_id)
+
+
+def _handle_cancel_trade(state: GameState, action: Action) -> Union[None, RuleError]:
+    err = _guard_in_play(state, action)
+    if err is not None:
+        return err
+    return trade.cancel(state, action.player_id, action.trade_id)
 
 
 def _handle_end_turn(state: GameState, action: Action) -> Union[None, RuleError]:

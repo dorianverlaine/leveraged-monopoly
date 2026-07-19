@@ -57,6 +57,7 @@ src/monopoly/
 │       ├── movement.py         #   dice, moving the ring, GO salary
 │       ├── trading.py          #   buying property, paying rent (+monopoly bonus)
 │       ├── building.py         #   develop a monopoly (houses → skyscraper)
+│       ├── trade.py            #   player-to-player trade offers (not turn-gated)
 │       ├── leverage.py         #   borrowing, repaying, mortgaging
 │       ├── securitization.py   #   IPO a slice of a property for cash
 │       ├── margin.py           #   margin calls, forced liquidation, bankruptcy
@@ -124,13 +125,28 @@ Each city is a **property group**:
 - **Interactions.** A developed landmark can't be mortgaged or securitized until
   its buildings are sold; a margin call / bankruptcy demolishes them. Securitizing
   any share of a city forfeits its monopoly. This is the substrate the capital
-  layers detonate: leverage to complete a set, then a shock wipes out the
-  over-developed player.
+  layers detonate: trade to complete a set, leverage it to build, then a shock
+  (or a rival's well-timed counter-trade) wipes out the over-developed player.
 
-> **Known design gap:** completing a whole-city monopoly by landing alone is hard
-> — classic Monopoly completes sets via **player-to-player trading**, which isn't
-> built yet. It's the natural next feature to make development a common, not rare,
-> part of a game.
+### Player-to-player trading
+
+Landing alone on all six landmarks of a city is rare, so players **negotiate**
+([`mechanics/trade.py`](src/monopoly/engine/mechanics/trade.py)) — the classic
+Monopoly social/betrayal layer, and how development actually happens in
+practice. Propose cash and/or property shares both ways; the recipient accepts,
+rejects, or lets it sit. Two things make this architecturally distinct from
+every other action:
+
+- **Not turn-gated.** Real trade talk happens anytime — propose, accept, reject,
+  and cancel work regardless of whose turn it is (every other action requires
+  your turn).
+- **Re-validated at accept, not just re-executed.** State can drift between a
+  proposal and its acceptance (spent cash, mortgaged the tile, gone bankrupt);
+  an offer is re-checked in full at accept time and dropped if it's gone stale,
+  rather than partially executed.
+- Since a traded property can be the collateral behind someone's leverage,
+  accepting a trade re-runs solvency — giving away a leveraged monopoly can
+  margin-call you, or receiving one can rescue you, in the same action.
 
 ---
 

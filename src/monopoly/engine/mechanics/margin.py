@@ -153,6 +153,13 @@ def bankrupt_player(state: GameState, player: Player) -> None:
     player.debt = 0
     player.cash = 0
     player.status = PlayerStatus.BANKRUPT
+
+    # A bankrupt player can no longer honor any trade they proposed or were
+    # offered; drop those pending offers rather than leave them dangling.
+    state.trades = [
+        t for t in state.trades if player.id not in (t.proposer_id, t.recipient_id)
+    ]
+
     state.record(
         Transaction(
             round_number=state.turn.round_number,

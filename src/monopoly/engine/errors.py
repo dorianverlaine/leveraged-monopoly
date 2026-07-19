@@ -47,6 +47,12 @@ class RuleErrorCode:
     INVALID_AMOUNT = "invalid_amount"
     INVALID_PERCENT = "invalid_percent"
 
+    # Trade violations
+    EMPTY_TRADE = "empty_trade"
+    TRADE_NOT_FOUND = "trade_not_found"
+    NOT_TRADE_PARTICIPANT = "not_trade_participant"
+    TRADE_NO_LONGER_VALID = "trade_no_longer_valid"
+
 
 @dataclass(frozen=True)
 class RuleError:

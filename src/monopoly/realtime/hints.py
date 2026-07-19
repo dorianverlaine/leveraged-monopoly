@@ -24,8 +24,14 @@ def available_action_types(state: GameState, seat: int) -> List[str]:
     if player is None or player.status == "bankrupt":
         return []
 
-    # Conceding is allowed at any time while you are still in the game.
-    options: List[str] = [ActionType.CONCEDE]
+    # Conceding and trading are allowed at any time -- the reducer never
+    # turn-gates trade actions (see engine/mechanics/trade.py), so these must
+    # not be hidden behind the "is it your turn" check below.
+    options: List[str] = [ActionType.CONCEDE, ActionType.PROPOSE_TRADE]
+    if any(t.recipient_id == seat for t in state.trades):
+        options += [ActionType.ACCEPT_TRADE, ActionType.REJECT_TRADE]
+    if any(t.proposer_id == seat for t in state.trades):
+        options.append(ActionType.CANCEL_TRADE)
 
     # Everything else requires it to be your turn.
     if state.active_player().id != seat:
