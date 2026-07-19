@@ -4,6 +4,17 @@ Pacing is a set of parameters, not code (design principle #4). These presets are
 just convenient bundles of :class:`GameConfig` values -- "quick / standard / long"
 -- plus a helper that fills empty seats with bots so 2 humans + 4 bots can play
 at 2 a.m. (architecture 4.6).
+
+**Balance note.** These values were tuned empirically with the backtest, not by
+intuition (architecture 5.2). The key finding: starting cash must be *low
+relative to property prices*, or players never need to borrow -- and with no
+debt, systemic shocks and margin calls never fire, so the game degenerates into
+plain Monopoly. The tuned starting cash forces players to leverage, which is what
+makes the capital-market layer (and its one-second collapses) actually happen.
+Across the default bots the capital layer now fires in ~80-100% of games, with
+bankruptcies a regular occurrence. See ``analysis/sweep.py`` to re-tune, and note
+that bot *win-rate* balance is limited by bot quality (the cautious cash-hoarder
+structurally survives harsh shocks), not by these parameters.
 """
 
 from __future__ import annotations
@@ -19,16 +30,19 @@ _DEFAULT_BOT_ROTATION = ["degen", "conservative", "cashflow", "contrarian"]
 
 
 def quick_match(max_players: int = 4) -> GameConfig:
-    """Short, punchy game: small ring, fast inflation, frequent shocks."""
+    """Short, punchy game: small ring, tight cash, frequent shocks."""
     return GameConfig(
         max_players=max_players,
         map_size=24,
         victory_condition=VictoryCondition.ROUND_LIMIT,
         round_limit=20,
-        starting_cash=1500,
+        starting_cash=250,
         inflation_rate=0.03,
-        shock_interval_rounds=6,
-        shock_magnitude=0.30,
+        shock_interval_rounds=4,
+        shock_magnitude=0.35,
+        maintenance_ratio=1.40,
+        max_leverage_ratio=0.80,
+        interest_rate=0.10,
     )
 
 
@@ -38,25 +52,31 @@ def standard_match(max_players: int = 6) -> GameConfig:
         max_players=max_players,
         map_size=36,
         victory_condition=VictoryCondition.LAST_SOLVENT,
-        round_limit=40,
-        starting_cash=1500,
+        round_limit=45,
+        starting_cash=450,
         inflation_rate=0.02,
-        shock_interval_rounds=8,
+        shock_interval_rounds=6,
         shock_magnitude=0.30,
+        maintenance_ratio=1.40,
+        max_leverage_ratio=0.80,
+        interest_rate=0.10,
     )
 
 
 def long_match(max_players: int = 6) -> GameConfig:
-    """Marathon game: big ring, gentler macro, rarer shocks."""
+    """Marathon game: big ring, more cash, gentler but relentless macro."""
     return GameConfig(
         max_players=max_players,
         map_size=44,
         victory_condition=VictoryCondition.LAST_SOLVENT,
         round_limit=80,
-        starting_cash=2000,
+        starting_cash=800,
         inflation_rate=0.015,
-        shock_interval_rounds=10,
-        shock_magnitude=0.25,
+        shock_interval_rounds=9,
+        shock_magnitude=0.28,
+        maintenance_ratio=1.35,
+        max_leverage_ratio=0.80,
+        interest_rate=0.06,
     )
 
 

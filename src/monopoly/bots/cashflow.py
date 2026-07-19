@@ -1,8 +1,10 @@
 """Cash-flow policy: prioritizes rent yield and securitization income.
 
-Accumulates rent-earning property and taps the equity market for liquidity
-instead of borrowing heavily. Sells slices of holdings (securitization) when cash
-runs low, and keeps a little debt discipline so a shock does not wipe it out.
+Accumulates rent-earning property and, when margin pressure threatens, raises
+cash by securitizing slices of holdings rather than being liquidated. In calm
+conditions it grows its rent base and develops monopolies; it only taps the
+equity market for a *purpose* (funding debt repayment under pressure), never just
+to sit on idle cash.
 """
 
 from __future__ import annotations
@@ -15,11 +17,12 @@ from ..engine.state import GameState
 from . import policy
 from .policy import Policy
 
-# Below this cash level the policy raises liquidity by securitizing a holding.
-_LOW_CASH = 200
-# Fraction of a holding sold per securitization step.
-_SELL_FRACTION = 0.25
-# Repay debt when the margin ratio sits this close to the maintenance floor.
+# Keep at least this much cash in reserve when buying, in a calm market.
+_LOW_CASH = 100
+# Fraction of a holding sold per securitization step (large enough to make real
+# progress in one action -- avoids re-securitizing the same turn).
+_SELL_FRACTION = 0.5
+# Treat margin as "tight" (act to de-risk) once headroom drops below this.
 _MARGIN_SAFETY = 0.25
 
 
@@ -28,31 +31,32 @@ class CashflowPolicy(Policy):
 
     def manage(self, state: GameState, player_id: int) -> Action:
         player = state.player_by_id(player_id)
-
-        # De-risk: if margin is tight and we have spare cash, pay down debt.
-        if (
+        tight = (
             player.debt > 0
-            and player.cash > _LOW_CASH
             and policy.margin_headroom(state, player_id) < _MARGIN_SAFETY
-        ):
-            return repay_debt(player_id, min(player.debt, player.cash - _LOW_CASH))
+        )
 
-        # Grow the rent base whenever we can pay cash and stay above the floor.
+        # Under margin pressure: pay down debt, raising cash by securitizing a
+        # slice first if we have none. This converges (repay shrinks debt,
+        # securitize shrinks holdings) rather than spinning on idle liquidity.
+        if tight:
+            if player.cash > 0:
+                return repay_debt(player_id, min(player.debt, player.cash))
+            tile = self._securitizable_tile(state, player_id)
+            if tile is not None:
+                return securitize(player_id, tile.index, _SELL_FRACTION)
+            return end_turn(player_id)  # nothing left to sell; ride it out
+
+        # Calm market: grow the rent base whenever we can pay cash and keep a
+        # small reserve, then develop monopolies (this policy lives on rent).
         if policy.can_buy_here(state, player_id):
             cost = policy.buy_cost_here(state, player_id)
             if player.cash - cost >= _LOW_CASH:
                 return buy(player_id, player.position)
 
-        # Develop a monopoly to multiply rent (this policy lives on rent yield).
         tile = policy.buildable_tile(state, player_id, cash_buffer=_LOW_CASH)
         if tile is not None:
             return build(player_id, tile.index)
-
-        # Short on cash -> IPO a slice of a holding rather than borrow.
-        if player.cash < _LOW_CASH:
-            tile = self._securitizable_tile(state, player_id)
-            if tile is not None:
-                return securitize(player_id, tile.index, _SELL_FRACTION)
 
         return end_turn(player_id)
 
