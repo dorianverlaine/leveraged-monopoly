@@ -1,15 +1,19 @@
-/* Game-screen specific styling: the board ring and the control panel. */
+/* Game screen layout.
+   Mobile (default): a single column -- header, players, board, control panel --
+   sized so the WHOLE board fits without scrolling.
+   Desktop (>=900px): three columns -- players+feed | board | control panel.  */
 
-/* Game screen: fixed header + scrollable middle + pinned control panel. */
 .game { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.game__scroll { flex: 1; overflow-y: auto; min-height: 0; }
+.game__body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.game__center { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.game__side { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; }
 
 /* --- Top status bar --- */
 .topbar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-bottom: 2px solid var(--line);
   background: #fff;
   flex: 0 0 auto;
@@ -28,7 +32,7 @@
   color: #fff;
 }
 
-/* --- Player strip --- */
+/* --- Player strip (row on mobile, column on desktop) --- */
 .players {
   display: flex;
   gap: 8px;
@@ -55,14 +59,29 @@
 .player-pill__avatar { font-size: 20px; line-height: 1; }
 .player-pill__nw { color: var(--ink-soft); font-size: 12px; }
 
-/* --- The board: 24 tiles around a 7x7 grid perimeter --- */
-.board-wrap { padding: 8px 10px; }
+/* --- Turn banner --- */
+.turnbar { flex: 0 0 auto; text-align: center; padding: 8px 14px 0; }
+.turnbar .title { font-size: 18px; }
+
+/* --- The board: 24 tiles around a 7x7 grid perimeter ---
+   The wrapper is a size container, so the board can be sized as a perfect
+   square that fits whichever of width/height is smaller. That is what keeps the
+   entire ring visible without scrolling on a phone. */
+.board-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 10px;
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
 .board {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: repeat(7, 1fr);
   gap: 3px;
-  aspect-ratio: 1;
   background: var(--bg-soft);
   border: 2px solid var(--line);
   border-radius: var(--radius-lg);
@@ -87,18 +106,16 @@
 .tile--hong_kong .tile__band { background: var(--city-hk); }
 .tile--paris .tile__band { background: var(--city-paris); }
 .tile--new_york .tile__band { background: var(--city-ny); }
-.tile__emoji { font-size: 15px; line-height: 1; margin-top: 4px; }
-.tile__price { font-size: 9px; font-weight: 800; color: var(--ink-soft); }
-.tile__owner {
-  position: absolute; bottom: 2px; right: 3px;
-  font-size: 11px; line-height: 1;
-}
+.tile__emoji { font-size: clamp(12px, 3.4cqw, 22px); line-height: 1; margin-top: 4px; }
+.tile__name { display: none; }
+.tile__price { font-size: clamp(8px, 2cqw, 12px); font-weight: 800; color: var(--ink-soft); }
+.tile__owner { position: absolute; bottom: 2px; right: 3px; font-size: clamp(9px, 2.4cqw, 15px); line-height: 1; }
 .tile__builds {
   position: absolute; bottom: 2px; left: 3px;
-  font-size: 9px; line-height: 1; font-weight: 900; color: var(--green-dark);
+  font-size: clamp(8px, 2cqw, 12px); line-height: 1; font-weight: 900; color: var(--green-dark);
 }
-.tile--here { border-color: var(--green); box-shadow: 0 0 0 3px rgba(88,204,2,.25) inset; }
-.tile--mortgaged { opacity: .5; }
+.tile--here { border-color: var(--green); box-shadow: 0 0 0 3px rgba(88, 204, 2, 0.25) inset; }
+.tile--mortgaged { opacity: 0.5; }
 
 /* Board centre panel */
 .board-center {
@@ -108,13 +125,30 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   text-align: center;
   padding: 8px;
 }
-.board-center__dice { font-size: 40px; line-height: 1; }
-.board-center__label { font-size: 12px; color: var(--ink-soft); font-weight: 800; }
-.board-center__index { font-size: 26px; font-weight: 900; }
+.board-center__dice { font-size: clamp(22px, 7cqw, 48px); line-height: 1; }
+.board-center__label { font-size: clamp(10px, 2.4cqw, 14px); color: var(--ink-soft); font-weight: 800; }
+.board-center__index { font-size: clamp(16px, 5cqw, 32px); font-weight: 900; }
+
+/* --- Latest-event ticker (mobile only; desktop shows the full feed) --- */
+.ticker {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--bg-soft);
+  border-top: 2px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ticker__amount { margin-left: auto; font-weight: 900; }
 
 /* --- Control panel --- */
 .panel {
@@ -123,7 +157,6 @@
   background: #fff;
   flex: 0 0 auto;
   box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.05);
-  max-height: 46dvh;
   overflow-y: auto;
 }
 .panel__row { display: flex; gap: 8px; margin-bottom: 8px; }
@@ -132,22 +165,22 @@
   background: var(--bg-soft);
   border: 2px solid var(--line);
   border-radius: var(--radius);
-  padding: 8px 10px;
+  padding: 7px 10px;
 }
 .stat__label { font-size: 11px; color: var(--ink-soft); font-weight: 800; text-transform: uppercase; }
-.stat__value { font-size: 20px; font-weight: 900; }
+.stat__value { font-size: 19px; font-weight: 900; }
 .stat--danger { background: #fff4f4; border-color: #ffc9c9; }
 .stat--danger .stat__value { color: var(--red-dark); }
 
 .margin-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; font-weight: 800; }
 
 /* One big hero CTA, then a compact grid of secondary tools. */
-.actions-hero { margin-bottom: 10px; }
-.actions-hero .btn { font-size: 20px; padding: 17px 12px; }
+.actions-hero { margin-bottom: 8px; }
+.actions-hero .btn { font-size: 19px; padding: 15px 12px; }
 .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .actions .btn {
   font-size: 12px;
-  padding: 10px 4px;
+  padding: 9px 4px;
   border-radius: 14px;
   letter-spacing: 0;
   --shadow-depth: 3px;
@@ -188,13 +221,71 @@
 .drama__title { font-size: 26px; font-weight: 900; margin: 10px 0 6px; }
 .drama__body { color: var(--ink-soft); font-size: 15px; margin-bottom: 18px; line-height: 1.4; }
 
-/* --- Event feed --- */
-.feed { padding: 0 14px 14px; }
+/* --- Event feed (full list; desktop side column) --- */
+.feed { display: none; padding: 8px 12px; overflow-y: auto; }
+.feed__title { font-size: 12px; font-weight: 900; color: var(--ink-soft); text-transform: uppercase; margin-bottom: 6px; }
 .feed__item {
   display: flex; gap: 8px; align-items: center;
-  font-size: 13px; padding: 8px 10px;
+  font-size: 13px; padding: 7px 8px;
   border-bottom: 1px solid var(--line);
 }
 .feed__amount { margin-left: auto; font-weight: 900; }
 .feed__amount--pos { color: var(--green-dark); }
 .feed__amount--neg { color: var(--red-dark); }
+
+/* =========================================================================
+   DESKTOP: three columns — players+feed | board | control panel
+   ========================================================================= */
+@media (min-width: 900px) {
+  .app-shell--wide { max-width: 1240px; }
+
+  .game__body { flex-direction: row; }
+
+  /* Left column: players stacked vertically, then the full event feed. */
+  .game__side {
+    width: 260px;
+    flex: 0 0 260px;
+    border-right: 2px solid var(--line);
+    background: var(--bg-soft);
+  }
+  .players {
+    flex-direction: column;
+    overflow-x: visible;
+    overflow-y: auto;
+    border-bottom: 2px solid var(--line);
+    background: transparent;
+    padding: 12px;
+  }
+  .player-pill { width: 100%; }
+  .feed { display: block; flex: 1; min-height: 0; }
+  .ticker { display: none; }
+
+  /* Centre column: the board is the star, with room to breathe. */
+  .game__center { padding-bottom: 8px; }
+  .turnbar { padding: 12px 14px 0; }
+  .turnbar .title { font-size: 22px; }
+  .board-wrap { padding: 12px 16px; }
+  .tile__emoji { font-size: 22px; }
+  .tile__name {
+    display: block;
+    font-size: 9px;
+    font-weight: 800;
+    color: var(--ink-soft);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 2px;
+  }
+
+  /* Right column: the control panel, full height, never squeezing the board. */
+  .panel {
+    width: 340px;
+    flex: 0 0 340px;
+    border-top: none;
+    border-left: 2px solid var(--line);
+    box-shadow: none;
+    padding: 16px;
+  }
+  .actions .btn { font-size: 13px; padding: 11px 4px; }
+}

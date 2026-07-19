@@ -154,6 +154,8 @@ export function Board({ state, you }: { state: GameState; you: number }) {
               <div className="tile__emoji">{tileEmoji(tile)}</div>
               {/* Price only while unowned -- once owned, the owner badge takes
                   that space, which keeps these small tiles legible. */}
+              {/* Desktop has room for the landmark name (CSS hides it on mobile). */}
+              {tile.type === "property" && <div className="tile__name">{tile.name}</div>}
               {tile.type === "property" && owner === null && (
                 <div className="tile__price">{tile.price}</div>
               )}

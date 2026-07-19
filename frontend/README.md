@@ -35,9 +35,17 @@ monopoly-server    # from the repo root, in the Python env
   "push" is what makes it feel like Duolingo.
 - **Emoji are a first-class visual layer** (per [`../docs/frontend.md`](../docs/frontend.md)) —
   they carry meaning across four languages without translation.
-- **The control panel is pinned** to the bottom and never scrolls away: cash,
-  net worth, debt, and a margin meter that turns red and pulses near a margin
-  call. One big hero CTA carries the turn; secondary tools sit in a compact grid.
+- **The control panel is pinned** and never scrolls away: cash, net worth, debt,
+  and a margin meter that turns red and pulses near a margin call. One big hero
+  CTA carries the turn; secondary tools sit in a compact grid.
+- **Responsive, with two real layouts** (breakpoint at 900px):
+  - *Mobile* — a single column. The board is sized with container-query units
+    (`min(100cqw, 100cqh)`) so the **whole ring always fits on screen** next to
+    the panel, with no scrolling; the event feed collapses to a one-line ticker.
+  - *Desktop* — three columns: players + full event feed on the left, a large
+    board in the centre (with landmark names, which don't fit on mobile), and
+    the control panel down the right so it never squeezes the board.
+  Home and Lobby stay a centred narrow column at every width.
 - **Dumb client**: buttons are rendered straight from the server's `available`
   list; the client computes no game rules.
 

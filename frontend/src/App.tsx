@@ -36,7 +36,8 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell">
+    // Only the game screen widens on desktop; home/lobby stay a centred column.
+    <div className={`app-shell${screen === "game" ? " app-shell--wide" : ""}`}>
       {screen === "home" && (
         <Home account={account} onPlay={() => setScreen("lobby")} onDemo={startGame} />
       )}
