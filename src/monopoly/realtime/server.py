@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import uuid
 from typing import Dict, Optional
 
@@ -329,6 +330,23 @@ class RealtimeServer:
             pass
 
 
+class _QuietHandshakeErrors(logging.Filter):
+    """Turn "someone sent plain HTTP to the WebSocket port" into one calm line.
+
+    Opening http://host:port in a browser makes ``websockets`` raise
+    InvalidUpgrade and dump a full stack trace, which reads like a server crash
+    but is just a client knocking on the wrong door.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[0] if record.exc_info else None
+        if exc is not None and exc.__name__ in {"InvalidUpgrade", "InvalidHandshake"}:
+            record.exc_info = None
+            record.msg = "ignored a non-WebSocket request (this port speaks WebSocket only)"
+            record.args = ()
+        return True
+
+
 async def _serve(
     host: str,
     port: int,
@@ -343,6 +361,8 @@ async def _serve(
             "The 'websockets' package is required to run the server. "
             "Install it with:  pip install -e \".[realtime]\""
         ) from exc
+
+    logging.getLogger("websockets.server").addFilter(_QuietHandshakeErrors())
 
     server = RealtimeServer(game_store=game_store, account_store=account_store)
     async with websockets.serve(server.handle, host, port):
