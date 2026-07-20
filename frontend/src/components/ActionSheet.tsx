@@ -285,6 +285,9 @@ export function ActionSheet({
     <div className="sheet-backdrop" onClick={onCancel}>
       <div className="sheet rise" onClick={(e) => e.stopPropagation()}>
         <div className="sheet__title">{title}</div>
+        {/* Explain what the action actually does -- players can't be expected to
+            infer "securitize" from a button label. */}
+        <div className="sheet__help">{t(`help.${action}`)}</div>
         <div className="sheet__sub">
           💰 {Math.round(me.cash)} · 🏦 {Math.round(me.debt)}
         </div>

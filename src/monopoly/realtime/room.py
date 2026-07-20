@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from ..bots.registry import make_policy
-from ..engine.actions import Action, end_turn
+from ..engine.actions import Action, accept_trade, end_turn, reject_trade
 from ..engine.errors import RuleError, RuleErrorCode
 from ..engine.player import Player, PlayerStatus
 from ..engine.reducer import reduce
@@ -110,17 +110,35 @@ class GameRoom:
         # Guards against double-persisting the same finished game.
         self.persisted: bool = False
 
-        rotation = bot_rotation or ["degen", "conservative", "cashflow", "contrarian"]
+        # Use the shared rotation so live rooms field the same bot line-up the
+        # rest of the project balances against (a local copy here previously
+        # drifted and silently excluded the strongest bot).
+        from ..config.presets import _DEFAULT_BOT_ROTATION
+
+        self.rotation = bot_rotation or list(_DEFAULT_BOT_ROTATION)
         # Start every seat as a bot; humans claim seats from the top as they join.
         self.seats: List[Seat] = [
-            Seat(
-                index=i,
-                name=f"Bot-{rotation[i % len(rotation)]}",
-                is_bot=True,
-                policy=rotation[i % len(rotation)],
-            )
+            Seat(index=i, name="", is_bot=True, policy="")
             for i in range(config.max_players)
         ]
+        self._reassign_bot_policies()
+
+    def _reassign_bot_policies(self) -> None:
+        """Spread the rotation across whichever seats are still bots.
+
+        Humans claim the lowest free seat, so assigning policies by seat index
+        would drop whichever bot happened to sit at seat 0 every time a player
+        joined -- which silently removed the strongest bot from every game.
+        Redistributing keeps the line-up stable however many humans are present.
+        """
+        n = 0
+        for seat in self.seats:
+            if not seat.is_bot:
+                continue
+            policy = self.rotation[n % len(self.rotation)]
+            seat.policy = policy
+            seat.name = f"Bot-{policy}"
+            n += 1
 
     # --- Lobby ----------------------------------------------------------
 
@@ -146,6 +164,7 @@ class GameRoom:
                 seat.account_id = account_id
                 if self.host_seat is None:
                     self.host_seat = seat.index
+                self._reassign_bot_policies()
                 return seat.index, seat.token
         return None
 
@@ -272,6 +291,60 @@ class GameRoom:
         events = [e.to_dict() for e in self.state.ledger[before:]]
         self._refresh_phase()
         return events
+
+    def resolve_bot_trades(self) -> List[List[dict]]:
+        """Let bot-driven seats answer any trade offers addressed to them.
+
+        Trading is deliberately *not* turn-gated, so a human can propose a trade
+        at any moment -- which means bots must be able to answer outside their
+        own turn too. Without this the offer would simply sit there forever and
+        trading would appear broken to a human player.
+
+        Returns one entry per resolved offer (the ledger events it produced) so
+        the server can broadcast each outcome.
+        """
+        steps: List[List[dict]] = []
+        if self.phase != RoomPhase.PLAYING or self.state is None:
+            return steps
+
+        guard = 0
+        progressed = True
+        while progressed and self.state.trades and guard < _MAX_BOT_STEPS:
+            progressed = False
+            for offer in list(self.state.trades):
+                seat = self.seats[offer.recipient_id]
+                if not self._is_bot_driven(seat):
+                    continue  # a connected human answers for themselves
+                guard += 1
+
+                policy_name = seat.policy if seat.is_bot else self.default_policy
+                decision = make_policy(policy_name).respond_to_trade(
+                    self.state, seat.index, offer
+                )
+                if decision is None:
+                    continue  # leave it pending
+
+                action = (
+                    accept_trade(seat.index, offer.id)
+                    if decision
+                    else reject_trade(seat.index, offer.id)
+                )
+                before = len(self.state.ledger)
+                outcome = reduce(self.state, action)
+                if isinstance(outcome, RuleError):
+                    # A stale accept: clear the offer rather than spin on it.
+                    action = reject_trade(seat.index, offer.id)
+                    outcome = reduce(self.state, action)
+                    if isinstance(outcome, RuleError):
+                        self.state.trades.remove(offer)
+                        continue
+                self.state = outcome
+                self.action_log.append(action)
+                steps.append([e.to_dict() for e in self.state.ledger[before:]])
+                self._refresh_phase()
+                progressed = True
+
+        return steps
 
     def advance_bots(self) -> List[List[dict]]:
         """Drive every consecutive bot / disconnected seat until a human is up.

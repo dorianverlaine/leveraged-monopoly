@@ -106,6 +106,37 @@ def test_action_forwards_trade_parameters():
     assert room.state.trades == []
 
 
+def test_bots_answer_a_humans_trade_offer():
+    # Regression: trading is not turn-gated, so a human can propose at any time --
+    # but the live room had no way for a bot to answer outside its own turn, so
+    # offers sat unanswered forever and trading looked broken to a real player.
+    hub, room, seat, token = _room_with_host(players=3)
+    room.start("sess-host")
+    room.state.players[0].cash = 2000
+
+    # Offer a bot generous cash for nothing; a fair-value bot should accept.
+    outcome = room.handle_action(
+        "sess-host",
+        {"type": "propose_trade", "target_player_id": 1, "offer_cash": 500,
+         "offer_tiles": {}, "request_cash": 0, "request_tiles": {}},
+    )
+    assert outcome.ok, outcome.error
+    assert len(room.state.trades) == 1
+
+    steps = room.resolve_bot_trades()
+    assert steps, "the bot recipient never answered the offer"
+    assert room.state.trades == []          # resolved, not left dangling
+    assert room.state.players[0].cash == 1500  # the cash actually moved
+
+
+def test_live_rooms_include_the_shark():
+    # Regression: the room kept its own copy of the bot rotation, which drifted
+    # from the shared one and silently excluded the strongest bot from live play.
+    hub = GameHub()
+    room = hub.create_room(resolve_config("quick", 6))
+    assert "shark" in {s.policy for s in room.seats}
+
+
 def test_malformed_action_payload_is_rejected_cleanly():
     hub, room, seat, token = _room_with_host()
     room.start("sess-host")

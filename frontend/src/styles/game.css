@@ -357,3 +357,21 @@
   .sheet-backdrop { align-items: center; }
   .sheet { border-radius: 26px; max-height: 86dvh; }
 }
+
+/* "What does this action do?" explanation inside the action sheet. */
+.sheet__help {
+  background: var(--bg-sky);
+  border: 2px solid #cfe9fb;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #2b5b78;
+  margin: 8px 0 4px;
+}
+
+/* Help sheet: a scrollable list of every action with its explanation. */
+.help-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.help-item__name { font-weight: 900; font-size: 15px; margin-bottom: 2px; }
+.help-item__text { font-size: 13px; color: var(--ink-soft); font-weight: 700; line-height: 1.45; }

@@ -36,6 +36,7 @@ export function Game({
   const { t } = useI18n();
   const [drama, setDrama] = useState<Drama | null>(null);
   const [sheet, setSheet] = useState<string | null>(null);
+  const [help, setHelp] = useState(false);
 
   const state = msg.state;
   const me = state.players.find((p) => p.id === msg.you)!;
@@ -58,6 +59,7 @@ export function Game({
     });
 
   const incoming = state.trades.filter((tr) => tr.recipient_id === msg.you);
+  const latest = state.ledger[state.ledger.length - 1];
 
   // Actions the server can't infer parameters for open the argument sheet.
   const NEEDS_ARGS = new Set([
@@ -89,6 +91,9 @@ export function Game({
         <span className="chip">
           ⏱️ {t("game.round")} {state.turn.round_number}
         </span>
+        <button className="chip" onClick={() => setHelp(true)} style={{ cursor: "pointer" }}>
+          ❓
+        </button>
         <div className="topbar__spacer" />
         <button
           className={`chip shock-chip ${shockNow ? "shock-chip--hot pulse-danger" : ""}`}
@@ -119,18 +124,19 @@ export function Game({
 
           <Board state={state} you={msg.you} />
 
-          {/* Mobile-only single-line ticker (desktop shows the full feed left). */}
-          {state.ledger[0] && (
+          {/* Mobile-only single-line ticker (desktop shows the full feed left).
+              Newest entry is the LAST one -- the ledger is append-only. */}
+          {latest && (
             <div className="ticker">
-              <span>{AVATARS[Math.max(0, state.ledger[0].player_id) % AVATARS.length]}</span>
-              <span>{t(`event.${state.ledger[0].kind}`)}</span>
-              {state.ledger[0].amount !== 0 && (
+              <span>{AVATARS[Math.max(0, latest.player_id) % AVATARS.length]}</span>
+              <span>{t(`event.${latest.kind}`)}</span>
+              {latest.amount !== 0 && (
                 <span
                   className="ticker__amount"
-                  style={{ color: state.ledger[0].amount > 0 ? "var(--green-dark)" : "var(--red-dark)" }}
+                  style={{ color: latest.amount > 0 ? "var(--green-dark)" : "var(--red-dark)" }}
                 >
-                  {state.ledger[0].amount > 0 ? "+" : ""}
-                  {state.ledger[0].amount}
+                  {latest.amount > 0 ? "+" : ""}
+                  {latest.amount}
                 </span>
               )}
             </div>
@@ -202,6 +208,25 @@ export function Game({
         </div>
         </section>
       </div>
+
+      {help && (
+        <div className="sheet-backdrop" onClick={() => setHelp(false)}>
+          <div className="sheet rise" onClick={(e) => e.stopPropagation()}>
+            <div className="sheet__title">❓ {t("help.title")}</div>
+            <div className="sheet__help">{t("help.intro")}</div>
+            {["roll_dice", "buy", "leverage", "repay_debt", "mortgage", "unmortgage",
+              "securitize", "build", "sell_building", "propose_trade", "end_turn"].map((a) => (
+              <div className="help-item" key={a}>
+                <div className="help-item__name">{t(`action.${a}`)}</div>
+                <div className="help-item__text">{t(`help.${a}`)}</div>
+              </div>
+            ))}
+            <div className="sheet__row">
+              <Btn block onClick={() => setHelp(false)}>{t("common.tap")}</Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {sheet && (
         <ActionSheet

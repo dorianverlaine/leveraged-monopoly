@@ -220,7 +220,9 @@ export function EventFeed({ entries, players }: { entries: LedgerEntry[]; player
     id < 0 ? "🌍" : players.find((p) => p.id === id)?.name ?? `#${id}`;
   return (
     <div className="feed">
-      {entries.slice(0, 6).map((e, i) => (
+      {/* The ledger is append-only, so the newest entries are at the END --
+          take the tail and reverse it to show most-recent-first. */}
+      {entries.slice(-6).reverse().map((e, i) => (
         <div className="feed__item" key={i}>
           <span>{AVATARS[Math.max(0, e.player_id) % AVATARS.length]}</span>
           <span>

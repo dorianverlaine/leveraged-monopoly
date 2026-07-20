@@ -244,12 +244,23 @@ class RealtimeServer:
             await self._send(conn, outcome.error)
             return
         await self._broadcast_state(room, outcome.events)
+        await self._resolve_trades(room)
         await self._drive_bots(room)
 
     # --- Bots -----------------------------------------------------------
 
+    async def _resolve_trades(self, room: GameRoom) -> None:
+        """Let bot seats answer pending trade offers, broadcasting each outcome.
+
+        Trading isn't turn-gated, so this must run independently of whose turn it
+        is -- otherwise a human's offer to a bot would never get an answer.
+        """
+        for events in room.resolve_bot_trades():
+            await self._broadcast_state(room, events)
+
     async def _drive_bots(self, room: GameRoom) -> None:
         """Step bot / disconnected seats one at a time, broadcasting each move."""
+        await self._resolve_trades(room)
         while room.bot_up():
             events = room.step_bot()
             if events is None:
