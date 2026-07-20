@@ -34,7 +34,7 @@ export function Lobby({
         </span>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="lobby-scroll" style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* the room code, big and friendly to read aloud */}
         <div className="roomcode pop-in">
           <div className="roomcode__label">{t("lobby.roomCode")}</div>

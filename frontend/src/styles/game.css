@@ -306,6 +306,7 @@
   background: #fff;
   width: 100%;
   max-width: 460px;
+  max-height: 82vh;  /* fallback */
   max-height: 82dvh;
   overflow-y: auto;
   border-radius: 26px 26px 0 0;
@@ -355,7 +356,7 @@
 
 @media (min-width: 900px) {
   .sheet-backdrop { align-items: center; }
-  .sheet { border-radius: 26px; max-height: 86dvh; }
+  .sheet { border-radius: 26px; max-height: 86vh; max-height: 86dvh; }
 }
 
 /* "What does this action do?" explanation inside the action sheet. */

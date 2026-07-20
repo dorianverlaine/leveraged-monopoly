@@ -54,6 +54,7 @@ button { font-family: inherit; cursor: pointer; }
 .app-shell {
   max-width: 460px;
   margin: 0 auto;
+  height: 100vh;   /* fallback for browsers without dvh */
   height: 100dvh;
   background: var(--bg);
   position: relative;
@@ -238,13 +239,13 @@ button { font-family: inherit; cursor: pointer; }
   background: linear-gradient(180deg, #fff7d6, #ffeead);
   border: 2px solid var(--gold);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 12px 16px;
   text-align: center;
   box-shadow: 0 4px 0 var(--gold-dark);
 }
 .roomcode__label { font-size: 12px; font-weight: 900; color: #8a6d00; text-transform: uppercase; letter-spacing: 1px; }
 .roomcode__value {
-  font-size: 44px;
+  font-size: 34px;
   font-weight: 900;
   letter-spacing: 8px;
   color: #6b5400;
@@ -253,7 +254,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .roomcode__hint { font-size: 12px; color: #8a6d00; font-weight: 700; }
 
-.seats { display: flex; flex-direction: column; gap: 8px; }
+.seats { display: flex; flex-direction: column; gap: 6px; }
 .seat {
   display: flex;
   align-items: center;
@@ -261,7 +262,7 @@ button { font-family: inherit; cursor: pointer; }
   background: #fff;
   border: 2px solid var(--line);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 .seat--you { border-color: var(--green); box-shadow: 0 3px 0 var(--green-dark); }
 .seat--empty {
@@ -271,7 +272,7 @@ button { font-family: inherit; cursor: pointer; }
   justify-content: center;
   font-weight: 800;
 }
-.seat__avatar { font-size: 24px; line-height: 1; }
+.seat__avatar { font-size: 21px; line-height: 1; }
 .seat__name { font-weight: 800; flex: 1; }
 .badge {
   font-size: 11px;
@@ -285,3 +286,16 @@ button { font-family: inherit; cursor: pointer; }
 .badge--host { background: #fff7d6; border-color: var(--gold); color: #8a6d00; }
 .badge--you { background: #eefbe2; border-color: var(--green); color: var(--green-dark); }
 .badge--bot { background: #f3f0ff; border-color: var(--purple); color: var(--purple-dark); }
+
+/* Scroll affordance: when the seat list is taller than its box (a 6-player
+   room on a short screen), fade the bottom edge so a partly-visible row reads
+   as "there's more below" rather than as a broken/cut-off row. */
+.lobby-scroll {
+  position: relative;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent 100%);
+}
+.lobby-scroll--end {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
