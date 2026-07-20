@@ -1,7 +1,7 @@
 // A realistic mock game state so the UI can be developed, demoed and screenshotted
 // without a running server. Mirrors what the backend's 24-tile board produces.
 
-import type { AccountProfile, GameState, StateMessage, Tile } from "./types";
+import type { AccountProfile, GameState, LobbySeat, StateMessage, Tile } from "./types";
 
 const HK = ["Sham Shui Po", "Mong Kok", "Yau Ma Tei", "Tsim Sha Tsui", "North Point", "Wan Chai"];
 const PARIS = ["Belleville", "Menilmontant", "Bastille", "Le Marais", "Montmartre", "Opera"];
@@ -73,11 +73,11 @@ export function mockState(): StateMessage {
       },
       {
         id: 2, name: "Bot-shark", cash: 980, position: 20, debt: 0, status: "active",
-        is_bot: true, policy: "shark", net_worth: 2140, collateral_value: 1160, margin_ratio: Infinity,
+        is_bot: true, policy: "shark", net_worth: 2140, collateral_value: 1160, margin_ratio: null,
       },
       {
         id: 3, name: "Bot-conservative", cash: 610, position: 7, debt: 0, status: "active",
-        is_bot: true, policy: "conservative", net_worth: 730, collateral_value: 120, margin_ratio: Infinity,
+        is_bot: true, policy: "conservative", net_worth: 730, collateral_value: 120, margin_ratio: null,
       },
     ],
     market: { price_index: 1.34, money_supply: 3200, shock_clock: 1, shocks_fired: 2 },
@@ -128,15 +128,9 @@ export function mockAccount(): AccountProfile {
   };
 }
 
-export interface LobbySeat {
-  seat: number;
-  name: string;
-  is_bot: boolean;
-  connected: boolean;
-  empty?: boolean;
-}
-
 /** A mock lobby: you (host), a friend, two bots and two open seats. */
+export type { LobbySeat };
+
 export function mockLobby(): { code: string; host: number; you: number; seats: LobbySeat[] } {
   return {
     code: "DT8P",

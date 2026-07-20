@@ -308,9 +308,22 @@ class RealtimeServer:
                 await self._send(conn, message)
 
     async def _send(self, conn: Connection, payload: dict) -> None:
-        """Serialize and send one frame, ignoring a closed socket."""
+        """Serialize and send one frame, ignoring a closed socket.
+
+        ``allow_nan=False`` is deliberate: Python happily emits bare ``Infinity``
+        / ``NaN``, which are *not* valid JSON and which browsers refuse to parse
+        -- a single such value silently makes the whole frame unreadable to a web
+        client. Failing loudly here turns that into an obvious server error
+        instead of a mystery on the client.
+        """
         try:
-            await conn.ws.send(json.dumps(payload))
+            body = json.dumps(payload, allow_nan=False)
+        except ValueError:
+            body = json.dumps(
+                protocol.error("bad_state", "State contained a non-JSON value")
+            )
+        try:
+            await conn.ws.send(body)
         except Exception:
             # The connection is going away; _on_close will clean it up.
             pass

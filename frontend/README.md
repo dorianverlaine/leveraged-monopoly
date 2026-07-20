@@ -51,7 +51,18 @@ monopoly-server    # from the repo root, in the Python env
 
 ## Status
 
-First pass: Home + Game screens against mock state, full design system, i18n.
-Still to wire: the live WebSocket client (`authenticate` → `create_room`/
-`join_room` → `action`), the lobby screen, and per-action argument prompts
-(amount for borrow/repay, tile for build, trade composer).
+**Connected to the live backend.** The client authenticates as a guest, creates
+or joins a room by code, starts the game, and plays against the real engine and
+bots over WebSocket (`src/net/client.ts` + `src/useGame.ts`). Demo mode still
+runs the whole UI from `src/mock.ts` with no server, which keeps design work
+fast and offline.
+
+Actions that need parameters open a bottom sheet
+(`src/components/ActionSheet.tsx`): an amount slider for borrow/repay, a tile
+picker for build/mortgage/redeem/sell, tile + percentage for securitize, and a
+trade composer (counterparty, cash both directions, and which landmarks each
+side puts in). `buy` fills in the tile you're standing on automatically.
+
+Still to build: a game-over / winner screen, dice-roll animation, and reconnect
+UI (the protocol supports `reconnect` with the seat token, the client doesn't
+use it yet).

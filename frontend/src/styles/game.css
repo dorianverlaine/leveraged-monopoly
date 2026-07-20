@@ -289,3 +289,71 @@
   }
   .actions .btn { font-size: 13px; padding: 11px 4px; }
 }
+
+/* =========================================================================
+   Action sheet — per-action argument input (amount, tile pick, trade)
+   ========================================================================= */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet {
+  background: #fff;
+  width: 100%;
+  max-width: 460px;
+  max-height: 82dvh;
+  overflow-y: auto;
+  border-radius: 26px 26px 0 0;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  border-top: 3px solid var(--line);
+}
+.sheet__title { font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+.sheet__sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 14px; }
+.sheet__section { font-size: 12px; font-weight: 900; color: var(--ink-soft);
+  text-transform: uppercase; margin: 14px 0 6px; }
+.sheet__row { display: flex; gap: 10px; margin-top: 14px; }
+.sheet__amount { font-size: 38px; font-weight: 900; text-align: center; margin: 6px 0; }
+.sheet__quick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.sheet__quick .chip { cursor: pointer; }
+.sheet__empty { text-align: center; color: var(--ink-soft); padding: 18px 0; font-weight: 700; }
+
+/* Tile picker rows */
+.pick {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left;
+  background: #fff; border: 2px solid var(--line); border-radius: var(--radius);
+  padding: 10px 12px; margin-bottom: 8px; font-weight: 800; font-size: 15px;
+  cursor: pointer; font-family: inherit; color: var(--ink);
+}
+.pick:hover { border-color: var(--blue); }
+.pick--on { border-color: var(--green); box-shadow: 0 3px 0 var(--green-dark); }
+.pick__emoji { font-size: 20px; }
+.pick__meta { margin-left: auto; font-size: 13px; color: var(--ink-soft); font-weight: 800; }
+.pick__band { width: 6px; height: 26px; border-radius: 3px; }
+
+/* Chunky Duolingo-ish range slider */
+.slider { width: 100%; -webkit-appearance: none; appearance: none; background: transparent; }
+.slider::-webkit-slider-runnable-track {
+  height: 14px; border-radius: 999px; background: var(--line);
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--green); border: 3px solid #fff;
+  box-shadow: 0 3px 0 var(--green-dark); margin-top: -8px; cursor: grab;
+}
+.slider::-moz-range-track { height: 14px; border-radius: 999px; background: var(--line); }
+.slider::-moz-range-thumb {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--green); border: 3px solid #fff; cursor: grab;
+}
+
+@media (min-width: 900px) {
+  .sheet-backdrop { align-items: center; }
+  .sheet { border-radius: 26px; max-height: 86dvh; }
+}

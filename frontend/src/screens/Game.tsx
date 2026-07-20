@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Board, Btn, Drama, DramaOverlay, EventFeed, PlayerStrip } from "../components";
 import { useI18n } from "../i18n";
 import { AVATARS } from "../mock";
+import { ActionSheet, SheetArgs } from "../components/ActionSheet";
 import type { StateMessage } from "../types";
 
 /** Actions that get the big primary treatment when available. */
@@ -29,11 +30,12 @@ export function Game({
   onExit,
 }: {
   msg: StateMessage;
-  onAction: (type: string) => void;
+  onAction: (type: string, args?: SheetArgs) => void;
   onExit: () => void;
 }) {
   const { t } = useI18n();
   const [drama, setDrama] = useState<Drama | null>(null);
+  const [sheet, setSheet] = useState<string | null>(null);
 
   const state = msg.state;
   const me = state.players.find((p) => p.id === msg.you)!;
@@ -41,7 +43,8 @@ export function Game({
   const shockNow = state.market.shock_clock <= 1;
 
   // Margin health: infinite (no debt) is safe; below ~1.5 is a real risk.
-  const ratio = me.debt > 0 ? me.margin_ratio : Infinity;
+  // null margin_ratio means "no debt" -> treat as infinitely safe.
+  const ratio = me.debt > 0 && me.margin_ratio !== null ? me.margin_ratio : Infinity;
   const danger = Number.isFinite(ratio) && ratio < 1.55;
   const warn = Number.isFinite(ratio) && ratio >= 1.55 && ratio < 2.2;
   const meterPct = !Number.isFinite(ratio) ? 100 : Math.max(4, Math.min(100, ((ratio - 1) / 2) * 100));
@@ -55,6 +58,18 @@ export function Game({
     });
 
   const incoming = state.trades.filter((tr) => tr.recipient_id === msg.you);
+
+  // Actions the server can't infer parameters for open the argument sheet.
+  const NEEDS_ARGS = new Set([
+    "leverage", "repay_debt", "build", "mortgage", "unmortgage",
+    "sell_building", "securitize", "propose_trade",
+  ]);
+  const dispatch = (type: string) => {
+    if (NEEDS_ARGS.has(type)) return setSheet(type);
+    // "buy" always refers to the tile you are standing on, so fill it in.
+    if (type === "buy") return onAction(type, { tile_index: me.position });
+    onAction(type);
+  };
 
   // The action that carries the turn forward gets the hero treatment; trade
   // responses live in their own card, so they're excluded here.
@@ -134,10 +149,10 @@ export function Game({
                 .join(", ")}
             </div>
             <div className="trade__row">
-              <Btn size="sm" block onClick={() => onAction("accept_trade")}>
+              <Btn size="sm" block onClick={() => onAction("accept_trade", { trade_id: incoming[0].id })}>
                 {t("action.accept_trade")}
               </Btn>
-              <Btn size="sm" block color="ghost" onClick={() => onAction("reject_trade")}>
+              <Btn size="sm" block color="ghost" onClick={() => onAction("reject_trade", { trade_id: incoming[0].id })}>
                 {t("action.reject_trade")}
               </Btn>
             </div>
@@ -173,20 +188,29 @@ export function Game({
             CTA carries the turn forward; the rest are compact tools. */}
         {hero && (
           <div className="actions-hero">
-            <Btn color={COLOR[hero] ?? "green"} block onClick={() => onAction(hero)}>
+            <Btn color={COLOR[hero] ?? "green"} block onClick={() => dispatch(hero)}>
               {t(`action.${hero}`)}
             </Btn>
           </div>
         )}
         <div className="actions">
           {secondary.map((a) => (
-            <Btn key={a} color={COLOR[a] ?? "blue"} onClick={() => onAction(a)}>
+            <Btn key={a} color={COLOR[a] ?? "blue"} onClick={() => dispatch(a)}>
               {t(`action.${a}`)}
             </Btn>
           ))}
         </div>
         </section>
       </div>
+
+      {sheet && (
+        <ActionSheet
+          action={sheet}
+          msg={msg}
+          onCancel={() => setSheet(null)}
+          onConfirm={(args) => { onAction(sheet, args); setSheet(null); }}
+        />
+      )}
 
       {drama && <DramaOverlay drama={drama} onClose={() => setDrama(null)} />}
     </div>

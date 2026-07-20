@@ -80,6 +80,39 @@ def test_action_player_id_is_overridden_by_seat():
     assert room.state.turn.phase == GamePhase.AWAIT_ACTION
 
 
+def test_action_forwards_trade_parameters():
+    # Regression: the room used to rebuild Action with only tile_index/amount/
+    # percent, silently dropping target_player_id / offer_tiles / trade_id, so
+    # trading was impossible over the wire even though the engine supported it.
+    hub, room, seat, token = _room_with_host(players=3)
+    room.add_human("sess-bob", "Bob")
+    room.start("sess-host")
+    room.state.players[0].cash = 500
+
+    outcome = room.handle_action(
+        "sess-host",
+        {"type": "propose_trade", "target_player_id": 1, "offer_cash": 100,
+         "offer_tiles": {}, "request_cash": 0, "request_tiles": {}},
+    )
+    assert outcome.ok, outcome.error
+    assert len(room.state.trades) == 1
+    offer = room.state.trades[0]
+    assert offer.proposer_id == 0 and offer.recipient_id == 1
+    assert offer.offer_cash == 100
+
+    # And the recipient can resolve it by id, also over the wire.
+    accepted = room.handle_action("sess-bob", {"type": "accept_trade", "trade_id": offer.id})
+    assert accepted.ok, accepted.error
+    assert room.state.trades == []
+
+
+def test_malformed_action_payload_is_rejected_cleanly():
+    hub, room, seat, token = _room_with_host()
+    room.start("sess-host")
+    outcome = room.handle_action("sess-host", {"type": "propose_trade", "offer_tiles": "not-a-dict"})
+    assert not outcome.ok  # a bad payload must not crash the room
+
+
 def test_action_from_unseated_session_rejected():
     hub, room, seat, token = _room_with_host()
     room.start("sess-host")
@@ -132,6 +165,21 @@ def test_full_game_with_one_human_reaches_game_over():
 
 
 # --- Serialization safety --------------------------------------------------
+
+def test_public_state_is_strict_json():
+    # Regression: a debt-free player's margin ratio is infinite, and Python
+    # serialises float('inf') as bare `Infinity` -- which is NOT valid JSON and
+    # which browsers refuse to parse, making the entire state frame unreadable
+    # to the web client. Python's own json.loads accepts it, so only a real
+    # browser caught this. allow_nan=False is what a strict parser does.
+    import json
+
+    hub, room, seat, token = _room_with_host(players=3)
+    room.start("sess-host")
+    payload = room.state_message_for(0)
+    encoded = json.dumps(payload, allow_nan=False)  # raises if Infinity/NaN leak
+    assert json.loads(encoded)["state"]["players"][0]["margin_ratio"] is None
+
 
 def test_public_state_omits_rng():
     hub, room, seat, token = _room_with_host()

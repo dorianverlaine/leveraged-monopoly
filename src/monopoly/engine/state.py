@@ -9,10 +9,12 @@ match: 4 players, 24 tiles" is just a different config -- never a code change.
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .board import Tile, build_board
+from .board import BUILD_COST_RATIO, Tile, build_board
 from .market import Market
 from .player import Player, PlayerStatus
 from .rng import SeededRng
@@ -225,11 +227,19 @@ class GameState:
             entry = p.to_dict()
             entry["net_worth"] = valuation.net_worth(self, p.id)
             entry["collateral_value"] = valuation.collateral_value(self, p.id)
-            entry["margin_ratio"] = valuation.margin_ratio(self, p.id)
+            # A debt-free player's margin ratio is mathematically infinite, but
+            # `Infinity` is NOT valid JSON -- browsers refuse to parse it, which
+            # would make the whole state frame unreadable to a web client. Emit
+            # null instead and let the client read that as "no debt, no ratio".
+            ratio = valuation.margin_ratio(self, p.id)
+            entry["margin_ratio"] = ratio if math.isfinite(ratio) else None
             players_out.append(entry)
 
         return {
-            "config": self.config.to_dict(),
+            # Development cost is a board-level rule rather than a GameConfig
+            # field, but clients need it to show "build costs N" without
+            # hardcoding (and silently drifting from) the engine's value.
+            "config": {**self.config.to_dict(), "build_cost_ratio": BUILD_COST_RATIO},
             "rng": {"state": self.rng.state},
             "turn": self.turn.to_dict(),
             "board": [t.to_dict() for t in self.board],

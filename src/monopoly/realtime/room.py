@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 
 from ..bots.registry import make_policy
 from ..engine.actions import Action, end_turn
-from ..engine.errors import RuleError
+from ..engine.errors import RuleError, RuleErrorCode
 from ..engine.player import Player, PlayerStatus
 from ..engine.reducer import reduce
 from ..engine.state import GameConfig, GameState, new_game
@@ -216,13 +216,15 @@ class GameRoom:
         if seat is None:
             return ActionOutcome(False, protocol.error("not_seated", "You are not seated in this room"))
 
-        action = Action(
-            type=action_dict.get("type", ""),
-            player_id=seat.index,                       # authoritative override
-            tile_index=action_dict.get("tile_index"),
-            amount=action_dict.get("amount"),
-            percent=action_dict.get("percent"),
-        )
+        # Rebuild through Action.from_dict so every argument the action space
+        # supports (including the trade fields) is forwarded -- then stamp the
+        # sender's own seat over whatever player_id the client claimed.
+        try:
+            action = Action.from_dict({**action_dict, "player_id": seat.index})
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return ActionOutcome(
+                False, protocol.error(RuleErrorCode.UNKNOWN_ACTION, "Malformed action payload")
+            )
 
         before = len(self.state.ledger)
         outcome = reduce(self.state, action)

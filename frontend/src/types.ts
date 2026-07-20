@@ -31,7 +31,8 @@ export interface Player {
   policy: string;
   net_worth: number;
   collateral_value: number;
-  margin_ratio: number; // may be Infinity (serialized as a big number / "Infinity")
+  /** null when the player has no debt (an infinite ratio isn't valid JSON). */
+  margin_ratio: number | null;
 }
 
 export interface Market {
@@ -85,6 +86,16 @@ export interface StateMessage {
   available: string[];
   events: LedgerEntry[];
   state: GameState;
+}
+
+/** One seat as reported by the server's `lobby` message. */
+export interface LobbySeat {
+  seat: number;
+  name: string;
+  is_bot: boolean;
+  connected: boolean;
+  /** Local-only marker used by the mock lobby for unclaimed seats. */
+  empty?: boolean;
 }
 
 export interface AccountProfile {

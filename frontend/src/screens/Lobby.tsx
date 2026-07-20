@@ -1,7 +1,7 @@
 import { Btn } from "../components";
 import { useI18n } from "../i18n";
 import { AVATARS } from "../mock";
-import type { LobbySeat } from "../mock";
+import type { LobbySeat } from "../types";
 
 export function Lobby({
   code,
